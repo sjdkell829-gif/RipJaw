@@ -1,0 +1,331 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Mojolicious::Lite -signatures;
+use Mojo::JSON qw(decode_json encode_json);
+
+# ============================================================
+#   SmashAPI — Backend Principal (Perl + Mojolicious)
+# ============================================================
+
+# Configuración
+my $SECRET = $ENV{JWT_SECRET} // 'smashapi_secret_cambiar_en_produccion';
+app->config(
+    hypnotoad => {
+        listen  => ['http://*:3000'],
+        workers => 4,
+    }
+);
+
+# Middleware: CORS
+hook before_dispatch => sub ($c) {
+    $c->res->headers->header('Access-Control-Allow-Origin'  => '*');
+    $c->res->headers->header('Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS');
+    $c->res->headers->header('Access-Control-Allow-Headers' => 'Content-Type, Authorization');
+    return if $c->req->method ne 'OPTIONS';
+    $c->render(text => '', status => 200);
+    $c->reply->rendered(200);
+};
+
+# ============================================================
+#   Inicializar DB
+# ============================================================
+use DBI;
+my $dbh;
+
+sub get_db {
+    unless ($dbh && $dbh->ping) {
+        $dbh = DBI->connect(
+            "dbi:SQLite:dbname=smash.db",
+            '', '',
+            { RaiseError => 1, AutoCommit => 1, sqlite_unicode => 1 }
+        ) or die "No se puede conectar a la DB: $DBI::errstr";
+    }
+    return $dbh;
+}
+
+# ============================================================
+#   Helpers: JWT simple
+# ============================================================
+use MIME::Base64 qw(encode_base64url decode_base64url);
+use Digest::SHA qw(hmac_sha256);
+
+sub create_token {
+    my ($payload) = @_;
+    my $header  = encode_base64url('{"alg":"HS256","typ":"JWT"}');
+    my $body    = encode_base64url(encode_json($payload));
+    my $sig     = encode_base64url(hmac_sha256("$header.$body", $SECRET));
+    return "$header.$body.$sig";
+}
+
+sub verify_token {
+    my ($token) = @_;
+    return undef unless $token;
+    my ($header, $body, $sig) = split /\./, $token;
+    return undef unless $header && $body && $sig;
+    my $expected = encode_base64url(hmac_sha256("$header.$body", $SECRET));
+    return undef unless $sig eq $expected;
+    return decode_json(decode_base64url($body));
+}
+
+helper auth_required => sub ($c) {
+    my $auth  = $c->req->headers->authorization // '';
+    my $token = $auth =~ s/^Bearer //r;
+    my $data  = verify_token($token);
+    unless ($data) {
+        $c->render(json => { error => 'No autorizado' }, status => 401);
+        return undef;
+    }
+    return $data;
+};
+
+# ============================================================
+#   RUTAS: Autenticación
+# ============================================================
+
+# POST /api/auth/register
+post '/api/auth/register' => sub ($c) {
+    my $params   = $c->req->json;
+    my $username = $params->{username} // '';
+    my $password = $params->{password} // '';
+    my $email    = $params->{email}    // '';
+
+    unless ($username && $password && $email) {
+        return $c->render(json => { error => 'Faltan campos requeridos' }, status => 400);
+    }
+
+    my $db = get_db();
+
+    # Verificar si ya existe
+    my $exists = $db->selectrow_hashref(
+        "SELECT id FROM players WHERE username = ? OR email = ?",
+        undef, $username, $email
+    );
+    if ($exists) {
+        return $c->render(json => { error => 'Usuario o email ya existe' }, status => 409);
+    }
+
+    # Hash de contraseña (simple para ejemplo — usar bcrypt en producción)
+    use Digest::SHA qw(sha256_hex);
+    my $pass_hash = sha256_hex($password . $SECRET);
+
+    $db->do(
+        "INSERT INTO players (username, email, password_hash, created_at) VALUES (?, ?, ?, datetime('now'))",
+        undef, $username, $email, $pass_hash
+    );
+    my $player_id = $db->last_insert_id('', '', 'players', 'id');
+
+    my $token = create_token({ player_id => $player_id, username => $username });
+
+    $c->render(json => {
+        message   => 'Cuenta creada exitosamente',
+        token     => $token,
+        player_id => $player_id,
+        username  => $username,
+    }, status => 201);
+};
+
+# POST /api/auth/login
+post '/api/auth/login' => sub ($c) {
+    my $params   = $c->req->json;
+    my $username = $params->{username} // '';
+    my $password = $params->{password} // '';
+
+    use Digest::SHA qw(sha256_hex);
+    my $pass_hash = sha256_hex($password . $SECRET);
+
+    my $db     = get_db();
+    my $player = $db->selectrow_hashref(
+        "SELECT id, username, email, elo FROM players WHERE username = ? AND password_hash = ?",
+        undef, $username, $pass_hash
+    );
+
+    unless ($player) {
+        return $c->render(json => { error => 'Credenciales incorrectas' }, status => 401);
+    }
+
+    my $token = create_token({ player_id => $player->{id}, username => $player->{username} });
+
+    $c->render(json => {
+        token     => $token,
+        player_id => $player->{id},
+        username  => $player->{username},
+        elo       => $player->{elo},
+    });
+};
+
+# GET /api/auth/me
+get '/api/auth/me' => sub ($c) {
+    my $auth = $c->auth_required;
+    return unless $auth;
+
+    my $db     = get_db();
+    my $player = $db->selectrow_hashref(
+        "SELECT id, username, email, elo, wins, losses, created_at FROM players WHERE id = ?",
+        undef, $auth->{player_id}
+    );
+
+    $c->render(json => $player);
+};
+
+# ============================================================
+#   RUTAS: Jugadores
+# ============================================================
+
+# GET /api/players/ranking — Top 100
+get '/api/players/ranking' => sub ($c) {
+    my $db = get_db();
+    my $players = $db->selectall_arrayref(
+        "SELECT id, username, elo, wins, losses FROM players ORDER BY elo DESC LIMIT 100",
+        { Slice => {} }
+    );
+    $c->render(json => { ranking => $players });
+};
+
+# GET /api/players/:id — Perfil
+get '/api/players/:id' => sub ($c) {
+    my $db     = get_db();
+    my $player = $db->selectrow_hashref(
+        "SELECT id, username, elo, wins, losses, created_at FROM players WHERE id = ?",
+        undef, $c->param('id')
+    );
+    return $c->render(json => { error => 'Jugador no encontrado' }, status => 404) unless $player;
+    $c->render(json => $player);
+};
+
+# ============================================================
+#   RUTAS: Matchmaking
+# ============================================================
+my %queue;  # player_id => { timestamp, elo }
+
+# POST /api/matchmaking/queue — Unirse a la cola
+post '/api/matchmaking/queue' => sub ($c) {
+    my $auth = $c->auth_required;
+    return unless $auth;
+
+    my $player_id = $auth->{player_id};
+
+    # Agregar a la cola
+    $queue{$player_id} = {
+        timestamp => time(),
+        username  => $auth->{username},
+    };
+
+    # Buscar oponente (el más antiguo en la cola que no sea yo)
+    my ($opponent_id) = grep { $_ ne $player_id } keys %queue;
+
+    if ($opponent_id) {
+        # ¡Match encontrado!
+        delete $queue{$player_id};
+        delete $queue{$opponent_id};
+
+        my $room_id = sprintf("%s_%s_%d", $player_id, $opponent_id, time());
+
+        return $c->render(json => {
+            status      => 'match_found',
+            room_id     => $room_id,
+            opponent_id => $opponent_id,
+            ws_url      => "ws://localhost:3001/game/$room_id",
+        });
+    }
+
+    $c->render(json => {
+        status  => 'waiting',
+        message => 'Buscando oponente...',
+    });
+};
+
+# DELETE /api/matchmaking/queue — Salir de la cola
+del '/api/matchmaking/queue' => sub ($c) {
+    my $auth = $c->auth_required;
+    return unless $auth;
+    delete $queue{$auth->{player_id}};
+    $c->render(json => { message => 'Saliste de la cola' });
+};
+
+# ============================================================
+#   RUTAS: Partidas
+# ============================================================
+
+# POST /api/match/result — Reportar resultado
+post '/api/match/result' => sub ($c) {
+    my $auth   = $c->auth_required;
+    return unless $auth;
+
+    my $params    = $c->req->json;
+    my $winner_id = $params->{winner_id};
+    my $loser_id  = $params->{loser_id};
+    my $room_id   = $params->{room_id};
+
+    my $db = get_db();
+    $db->do(
+        "INSERT INTO matches (room_id, winner_id, loser_id, played_at) VALUES (?, ?, ?, datetime('now'))",
+        undef, $room_id, $winner_id, $loser_id
+    );
+
+    # Actualizar stats
+    $db->do("UPDATE players SET wins = wins + 1, elo = elo + 25 WHERE id = ?",  undef, $winner_id);
+    $db->do("UPDATE players SET losses = losses + 1, elo = MAX(0, elo - 15) WHERE id = ?", undef, $loser_id);
+
+    $c->render(json => { message => 'Resultado guardado', elo_change => { winner => '+25', loser => '-15' } });
+};
+
+# GET /api/match/history/:player_id — Historial
+get '/api/match/history/:player_id' => sub ($c) {
+    my $db      = get_db();
+    my $matches = $db->selectall_arrayref(
+        "SELECT m.room_id, m.winner_id, m.loser_id, m.played_at,
+                pw.username as winner_name, pl.username as loser_name
+         FROM matches m
+         JOIN players pw ON pw.id = m.winner_id
+         JOIN players pl ON pl.id = m.loser_id
+         WHERE m.winner_id = ? OR m.loser_id = ?
+         ORDER BY m.played_at DESC LIMIT 20",
+        { Slice => {} }, $c->param('player_id'), $c->param('player_id')
+    );
+    $c->render(json => { matches => $matches });
+};
+
+# ============================================================
+#   WebSocket — Sincronización en tiempo real
+# ============================================================
+my %rooms;  # room_id => [ connection1, connection2 ]
+
+websocket '/game/:room_id' => sub ($c) {
+    my $room_id = $c->param('room_id');
+    $c->inactivity_timeout(0);
+
+    # Unir al room
+    push @{$rooms{$room_id}}, $c->tx;
+    my $player_num = scalar @{$rooms{$room_id}};
+    app->log->info("Jugador $player_num se unió al room $room_id");
+
+    # Notificar si ya hay 2 jugadores
+    if ($player_num == 2) {
+        for my $tx (@{$rooms{$room_id}}) {
+            $tx->send({ json => { type => 'game_start', message => '¡La batalla comienza!' } });
+        }
+    }
+
+    $c->on(message => sub ($c, $msg) {
+        my $data = decode_json($msg);
+
+        # Broadcast a todos en el room (excepto el remitente)
+        for my $tx (@{$rooms{$room_id}}) {
+            next if $tx == $c->tx;
+            $tx->send({ json => $data });
+        }
+    });
+
+    $c->on(finish => sub ($c, $code, $reason) {
+        # Limpiar conexión del room
+        $rooms{$room_id} = [grep { $_ != $c->tx } @{$rooms{$room_id} // []}];
+        delete $rooms{$room_id} unless @{$rooms{$room_id}};
+        app->log->info("Jugador salió del room $room_id");
+    });
+};
+
+# ============================================================
+#   Iniciar servidor
+# ============================================================
+app->start;

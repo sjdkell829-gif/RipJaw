@@ -33,3 +33,28 @@ inc/
 /MANIFEST.bak
 /pm_to_blib
 /*.zip
+
+
+# Base de datos
+backend/smash.db
+backend/*.db
+*.db-shm
+*.db-wal
+
+# Godot
+godot-client/.godot/
+godot-client/export/
+godot-client/*.import
+godot-client/android/
+godot-client/ios/
+
+# Perl
+*.bak
+*.swp
+
+# Docker
+.env
+
+# OS
+.DS_Store
+Thumbs.db
