@@ -35,13 +35,40 @@ my $dbh;
 
 sub get_db {
     unless ($dbh && $dbh->ping) {
+        my $db_path = $ENV{DB_PATH} // "smash.db";
         $dbh = DBI->connect(
-            "dbi:SQLite:dbname=smash.db",
+            "dbi:SQLite:dbname=$db_path",
             '', '',
             { RaiseError => 1, AutoCommit => 1, sqlite_unicode => 1 }
         ) or die "No se puede conectar a la DB: $DBI::errstr";
+        _init_db($dbh);
     }
     return $dbh;
+}
+
+sub _init_db {
+    my ($db) = @_;
+    $db->do(q{
+        CREATE TABLE IF NOT EXISTS players (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT NOT NULL UNIQUE,
+            email         TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            elo           INTEGER DEFAULT 1000,
+            wins          INTEGER DEFAULT 0,
+            losses        INTEGER DEFAULT 0,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    });
+    $db->do(q{
+        CREATE TABLE IF NOT EXISTS matches (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id    TEXT NOT NULL,
+            winner_id  INTEGER NOT NULL,
+            loser_id   INTEGER NOT NULL,
+            played_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    });
 }
 
 # ============================================================
