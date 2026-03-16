@@ -2,7 +2,7 @@ FROM perl:5.38
 
 WORKDIR /app
 
-# Build tools + dependencias del sistema para compilar módulos Perl
+# Build tools + dependencias del sistema
 RUN apt-get update && apt-get install -y \
     build-essential \
     gcc \
@@ -28,9 +28,8 @@ RUN cpanm --notest \
 # Copiar código del servidor
 COPY . .
 
-# Crear directorio de datos e inicializar la base de datos
-RUN mkdir -p /data && \
-    sqlite3 /data/smash.db < db/schema.sql
+# Script de inicio que inicializa la DB y arranca el servidor
+RUN echo '#!/bin/bash\nmkdir -p /data\nsqlite3 /data/smash.db < /app/db/schema.sql\nexec perl /app/smashapi.pl daemon -l http://*:3000' > /start.sh && chmod +x /start.sh
 
 EXPOSE 3000
 
@@ -38,4 +37,4 @@ ENV JWT_SECRET=cambiar_en_produccion \
     DB_PATH=/data/smash.db \
     MOJO_MODE=production
 
-CMD ["perl", "smashapi.pl", "daemon", "-l", "http://*:3000"]
+CMD ["/start.sh"]
