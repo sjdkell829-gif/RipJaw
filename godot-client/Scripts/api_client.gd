@@ -6,7 +6,7 @@
 
 extends Node
 
-const BASE_URL = "http://localhost:3000"
+const BASE_URL = "https://ripjaw-production.up.railway.app"
 
 var token: String = ""
 var local_player_id: int = 0
