@@ -1,12 +1,17 @@
-FROM perl:5.38-slim
+FROM perl:5.38
 
 WORKDIR /app
 
-# Dependencias del sistema
+# Build tools + dependencias del sistema para compilar módulos Perl
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    make \
     libsqlite3-dev \
     sqlite3 \
     curl \
+    libssl-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar módulos Perl necesarios
@@ -27,10 +32,8 @@ COPY . .
 RUN mkdir -p /data && \
     sqlite3 /data/smash.db < db/schema.sql
 
-# Puerto REST (WebSocket también corre en el mismo puerto con Mojolicious)
 EXPOSE 3000
 
-# Variables de entorno con defaults
 ENV JWT_SECRET=cambiar_en_produccion \
     DB_PATH=/data/smash.db \
     MOJO_MODE=production
