@@ -1,0 +1,162 @@
+[gd_scene format=3 uid="uid://dl7x78f3yk28n"]
+
+[ext_resource type="Script" uid="uid://lifdk47mqaui" path="res://scripts/game_manager.gd" id="1_yqjtg"]
+[ext_resource type="Script" uid="uid://c24jotppy0an0" path="res://scripts/fighter.gd" id="2_lnu2h"]
+[ext_resource type="Shader" uid="uid://cpjfhotdscgvp" path="res://scenes/game.gdshader" id="3_iywne"]
+[ext_resource type="Texture2D" uid="uid://bsk3k81lfcvkf" path="res://icon.svg" id="3_lnu2h"]
+[ext_resource type="Texture2D" uid="uid://ch4oyjpcajt2q" path="res://assets/LCD Handhelds - Vital Bracelet BE - BEM#0253_ My Hero Academia 01 - Izuku Midoriya (Phase 5).png" id="3_p57ef"]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_lnu2h"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iywne"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(128, 56, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_p57ef"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(192, 56, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u5sy4"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(128, 112, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_gee14"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(0, 0, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0tnpc"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(64, 0, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_vtaks"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(128, 0, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_kvpfn"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(192, 0, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_dinhu"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(192, 112, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_kvuet"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(0, 56, 64, 56)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_trtic"]
+atlas = ExtResource("3_p57ef")
+region = Rect2(64, 56, 64, 56)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_sww3w"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_iywne")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_p57ef")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_u5sy4")
+}],
+"loop": false,
+"name": &"attack",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_gee14")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0tnpc")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_vtaks")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_kvpfn")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 6.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_dinhu")
+}],
+"loop": true,
+"name": &"jump",
+"speed": 8.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_kvuet")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_trtic")
+}],
+"loop": true,
+"name": &"run",
+"speed": 5.0
+}]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_iywne"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_iywne"]
+shader = ExtResource("3_iywne")
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_p57ef"]
+size = Vector2(1152, 32)
+
+[node name="Game" type="Node2D" unique_id=1900206298]
+script = ExtResource("1_yqjtg")
+
+[node name="Player1" type="CharacterBody2D" parent="." unique_id=48887886]
+position = Vector2(300, 450)
+script = ExtResource("2_lnu2h")
+player_id = 0
+is_local_player = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player1" unique_id=1547226800]
+shape = SubResource("CapsuleShape2D_lnu2h")
+
+[node name="Camera2D" type="Camera2D" parent="Player1" unique_id=1090517901]
+position_smoothing_enabled = true
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Player1" unique_id=1248660120]
+position = Vector2(0, 0)
+sprite_frames = SubResource("SpriteFrames_sww3w")
+animation = &"idle"
+
+[node name="Player2" type="CharacterBody2D" parent="." unique_id=1236181883]
+position = Vector2(850, 450)
+script = ExtResource("2_lnu2h")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player2" unique_id=1857183937]
+shape = SubResource("CapsuleShape2D_iywne")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Player2" unique_id=2044296058]
+position = Vector2(0, 0)
+sprite_frames = SubResource("SpriteFrames_sww3w")
+animation = &"idle"
+
+[node name="Floor" type="StaticBody2D" parent="." unique_id=1028926091]
+position = Vector2(576, 580)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Floor" unique_id=1639062475]
+shape = SubResource("RectangleShape2D_p57ef")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=2130115863]
+
+[node name="P1Damage" type="Label" parent="HUD" unique_id=271658832]
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="P2Damage" type="Label" parent="HUD" unique_id=1334513330]
+offset_right = 40.0
+offset_bottom = 23.0
+
+[node name="Timer" type="Label" parent="HUD" unique_id=652555621]
+offset_right = 40.0
+offset_bottom = 23.0

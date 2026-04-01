@@ -1,16 +1,9 @@
-# ============================================================
-#   SmashAPI — main_menu.gd
-#   UI generada por código, sin necesidad de nodos manuales
-# ============================================================
-
 extends Control
 
-# ── Variables de estado ────────────────────────────────────
 var _searching: bool = false
 var _search_timer: float = 0.0
 var _dots: int = 0
 
-# ── Nodos UI (creados por código) ──────────────────────────
 var login_panel: Panel
 var main_panel: Panel
 var searching_panel: Panel
@@ -24,13 +17,9 @@ var searching_label: Label
 
 
 func _ready():
-	# Hacer que ocupe toda la pantalla
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	
 	_build_ui()
 	_show_panel(login_panel)
-	
-	# Conectar señales de la API
 	ApiClient.login_success.connect(_on_login_success)
 	ApiClient.login_error.connect(_on_login_error)
 	ApiClient.register_success.connect(_on_login_success)
@@ -49,15 +38,11 @@ func _process(delta):
 		ApiClient.join_queue()
 
 
-# ── Construir UI por código ────────────────────────────────
-
 func _build_ui():
-	# Fondo negro
 	var bg = ColorRect.new()
-	bg.color = Color(0.1, 0.1, 0.15)
+	bg.color = Color(0.08, 0.08, 0.12)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-
 	_build_login_panel()
 	_build_main_panel()
 	_build_searching_panel()
@@ -69,10 +54,10 @@ func _build_login_panel():
 	add_child(login_panel)
 
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	vbox.custom_minimum_size = Vector2(400, 300)
-	vbox.position = Vector2(-200, -150)
-	vbox.add_theme_constant_override("separation", 16)
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	vbox.position = Vector2(376, 80)
+	vbox.custom_minimum_size = Vector2(400, 500)
+	vbox.add_theme_constant_override("separation", 14)
 	login_panel.add_child(vbox)
 
 	# Título
@@ -82,20 +67,33 @@ func _build_login_panel():
 	title.add_theme_font_size_override("font_size", 36)
 	vbox.add_child(title)
 
-	# Username
+	# Botón jugar sin cuenta - PRIMERO y destacado
+	var quick_btn = Button.new()
+	quick_btn.text = "🎮 Jugar sin cuenta"
+	quick_btn.custom_minimum_size = Vector2(400, 55)
+	quick_btn.add_theme_font_size_override("font_size", 18)
+	quick_btn.pressed.connect(_on_quick_play_pressed)
+	vbox.add_child(quick_btn)
+
+	var sep = HSeparator.new()
+	vbox.add_child(sep)
+
+	var or_label = Label.new()
+	or_label.text = "— o inicia sesión —"
+	or_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(or_label)
+
 	username_input = LineEdit.new()
 	username_input.placeholder_text = "Usuario"
 	username_input.custom_minimum_size = Vector2(400, 40)
 	vbox.add_child(username_input)
 
-	# Password
 	password_input = LineEdit.new()
 	password_input.placeholder_text = "Contraseña"
 	password_input.secret = true
 	password_input.custom_minimum_size = Vector2(400, 40)
 	vbox.add_child(password_input)
 
-	# Botones
 	var hbox = HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 12)
 	vbox.add_child(hbox)
@@ -112,7 +110,6 @@ func _build_login_panel():
 	register_btn.pressed.connect(_on_register_pressed)
 	hbox.add_child(register_btn)
 
-	# Error label
 	login_error = Label.new()
 	login_error.text = ""
 	login_error.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -126,9 +123,9 @@ func _build_main_panel():
 	add_child(main_panel)
 
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	vbox.custom_minimum_size = Vector2(400, 300)
-	vbox.position = Vector2(-200, -150)
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	vbox.position = Vector2(376, 100)
+	vbox.custom_minimum_size = Vector2(400, 400)
 	vbox.add_theme_constant_override("separation", 20)
 	main_panel.add_child(vbox)
 
@@ -144,10 +141,17 @@ func _build_main_panel():
 	elo_label.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(elo_label)
 
+	var local_btn = Button.new()
+	local_btn.text = "🎮 Jugar local"
+	local_btn.custom_minimum_size = Vector2(400, 55)
+	local_btn.add_theme_font_size_override("font_size", 18)
+	local_btn.pressed.connect(_on_quick_play_pressed)
+	vbox.add_child(local_btn)
+
 	var fight_btn = Button.new()
-	fight_btn.text = "⚔ PELEAR"
-	fight_btn.custom_minimum_size = Vector2(400, 60)
-	fight_btn.add_theme_font_size_override("font_size", 22)
+	fight_btn.text = "⚔ Pelear online"
+	fight_btn.custom_minimum_size = Vector2(400, 55)
+	fight_btn.add_theme_font_size_override("font_size", 18)
 	fight_btn.pressed.connect(_on_fight_pressed)
 	vbox.add_child(fight_btn)
 
@@ -164,9 +168,9 @@ func _build_searching_panel():
 	add_child(searching_panel)
 
 	var vbox = VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	vbox.position = Vector2(376, 200)
 	vbox.custom_minimum_size = Vector2(400, 200)
-	vbox.position = Vector2(-200, -100)
 	vbox.add_theme_constant_override("separation", 20)
 	searching_panel.add_child(vbox)
 
@@ -183,15 +187,18 @@ func _build_searching_panel():
 	vbox.add_child(cancel_btn)
 
 
-# ── Navegación ─────────────────────────────────────────────
-
 func _show_panel(panel: Panel):
-	login_panel.visible    = (panel == login_panel)
-	main_panel.visible     = (panel == main_panel)
+	login_panel.visible     = (panel == login_panel)
+	main_panel.visible      = (panel == main_panel)
 	searching_panel.visible = (panel == searching_panel)
 
 
-# ── Eventos ────────────────────────────────────────────────
+func _on_quick_play_pressed():
+	GameData.room_id     = ""
+	GameData.ws_url      = ""
+	GameData.opponent_id = 0
+	get_tree().change_scene_to_file("res://scenes/game.tscn")
+
 
 func _on_login_pressed():
 	login_error.text = ""

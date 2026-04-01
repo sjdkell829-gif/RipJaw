@@ -1,0 +1,6 @@
+@RipJawAPI_HostAddress = http://localhost:5203
+
+GET {{RipJawAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

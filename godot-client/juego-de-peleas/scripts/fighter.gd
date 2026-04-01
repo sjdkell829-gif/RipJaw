@@ -1,117 +1,139 @@
 # ============================================================
 #   SmashAPI — fighter.gd
 #   Adjuntar a un CharacterBody2D
-#   Lógica de movimiento, salto y ataques tipo Smash Bros
 # ============================================================
-
 extends CharacterBody2D
 
-# ── Stats ──────────────────────────────────────────────────
-@export var move_speed: float    = 200.0
-@export var jump_force: float    = -500.0
-@export var attack_damage: int   = 15
+@export var move_speed: float      = 200.0
+@export var jump_force: float      = -500.0
+@export var attack_damage: int     = 15
 @export var knockback_force: float = 300.0
+@export var player_id: int         = 1
+@export var is_local_player: bool  = false
 
-# ── Estado ─────────────────────────────────────────────────
-@export var player_id: int       = 1
-@export var is_local_player: bool = false
-
-var damage_percent: float = 0.0   # 0% → 999% como en Smash
+var damage_percent: float = 0.0
 var stocks: int = 3
 var can_attack: bool = true
-
-# Gravedad del proyecto
+var facing_direction: float = 1.0
 var gravity = ProjectSettings.get_setting("physics/2d/default_gravity")
 
-# ── Nodos hijos ────────────────────────────────────────────
-@onready var anim: AnimationPlayer = $AnimationPlayer
-@onready var attack_area: Area2D   = $AttackArea
-@onready var sprite: Sprite2D      = $Sprite2D
+signal took_damage(pid, percent)
+signal died(pid)
 
-signal took_damage(player_id, percent)
-signal died(player_id)
+var _actions: Dictionary = {}
+var _current_anim: String = ""
+
+@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+
+
+func _ready():
+	if player_id == 1:
+		_actions = {
+			"left":   "p1_left",
+			"right":  "p1_right",
+			"jump":   "p1_jump",
+			"attack": "p1_attack",
+		}
+		facing_direction = 1.0
+	else:
+		_actions = {
+			"left":   "p2_left",
+			"right":  "p2_right",
+			"jump":   "p2_jump",
+			"attack": "p2_attack",
+		}
+		facing_direction = -1.0
+	scale.x = facing_direction
+
+	# Verificar que el sprite existe y arrancar animación
+	if sprite:
+		sprite.play("idle")
+		print("Sprite OK — player_id: ", player_id)
+	else:
+		print("ERROR: No se encontró AnimatedSprite2D en player_id: ", player_id)
 
 
 func _physics_process(delta):
-	# Aplicar gravedad
 	if not is_on_floor():
 		velocity.y += gravity * delta
-
 	if is_local_player:
 		_handle_input()
-
 	move_and_slide()
+	_update_animation()
 	_check_out_of_bounds()
 
 
-# ── Input local ────────────────────────────────────────────
-
 func _handle_input():
-	var dir = Input.get_axis("ui_left", "ui_right")
+	var dir = Input.get_axis(_actions["left"], _actions["right"])
 	velocity.x = dir * move_speed
-
-	# Voltear sprite
-	if dir != 0:
-		sprite.flip_h = dir < 0
-
-	# Salto
-	var jumping = false
-	if Input.is_action_just_pressed("ui_accept") and is_on_floor():
+	if dir > 0:
+		scale.x = 1.0
+	elif dir < 0:
+		scale.x = -1.0
+	if Input.is_action_just_pressed(_actions["jump"]) and is_on_floor():
 		velocity.y = jump_force
-		jumping = true
-		anim.play("jump")
-
-	# Ataque
-	var attacking = false
-	if Input.is_action_just_pressed("ui_select") and can_attack:
-		attacking = true
+	if Input.is_action_just_pressed(_actions["attack"]) and can_attack:
 		_do_attack()
 
-	# Animación de movimiento
-	if is_on_floor():
-		if dir != 0:
-			anim.play("run")
-		else:
-			anim.play("idle")
 
-	# Enviar input al servidor
-	WebSocketClient.send_input(dir, velocity.y, attacking, jumping)
+func _update_animation():
+	if not sprite:
+		return
 
+	# No interrumpir el ataque hasta que termine
+	if _current_anim == "attack" and sprite.is_playing():
+		return
 
-# ── Ataque ─────────────────────────────────────────────────
+	var new_anim: String
+
+	if not is_on_floor():
+		new_anim = "jump"
+	elif abs(velocity.x) > 10:
+		new_anim = "run"
+	else:
+		new_anim = "idle"
+
+	# Solo cambiar si es diferente para no reiniciar el loop
+	if new_anim != _current_anim:
+		_current_anim = new_anim
+		sprite.play(new_anim)
+
 
 func _do_attack():
 	can_attack = false
-	anim.play("attack")
+	_current_anim = "attack"
+	if sprite:
+		sprite.play("attack")
+		# Volver a idle cuando termine el ataque
+		await sprite.animation_finished
+		_current_anim = ""
 
-	# Detectar enemigos en el área de ataque
-	var bodies = attack_area.get_overlapping_bodies()
-	for body in bodies:
+	var space = get_world_2d().direct_space_state
+	var query = PhysicsShapeQueryParameters2D.new()
+	var shape = CircleShape2D.new()
+	shape.radius = 60.0
+	query.shape = shape
+	query.transform = global_transform
+	query.collision_mask = 1
+	var results = space.intersect_shape(query)
+	for result in results:
+		var body = result.collider
 		if body == self:
 			continue
 		if body.has_method("take_hit"):
 			body.take_hit(attack_damage, global_position)
-			WebSocketClient.send_hit(body.player_id, attack_damage)
 
 	await get_tree().create_timer(0.3).timeout
 	can_attack = true
 
 
-# ── Recibir golpe ──────────────────────────────────────────
-
 func take_hit(damage: int, source_pos: Vector2):
 	damage_percent += damage
-
-	# Knockback escalado: más % = más lejos (mecánica de Smash)
 	var multiplier = 1.0 + (damage_percent / 100.0)
-	var direction  = (global_position - source_pos).normalized()
+	var direction = (global_position - source_pos).normalized()
 	velocity += direction * knockback_force * multiplier
-
-	anim.play("hit")
 	took_damage.emit(player_id, damage_percent)
 
-
-# ── Aplicar estado del oponente (recibido por WebSocket) ───
 
 func apply_remote_state(data: Dictionary):
 	if data.get("type") == "input":
@@ -122,22 +144,19 @@ func apply_remote_state(data: Dictionary):
 			_do_attack()
 
 
-# ── Muerte ─────────────────────────────────────────────────
-
 func _check_out_of_bounds():
-	# Si el personaje sale de la pantalla, muere
 	if position.y > 800 or abs(position.x) > 1200:
 		_die()
 
 
 func _die():
 	stocks -= 1
-	anim.play("die")
 	died.emit(player_id)
-
 	if stocks > 0:
-		# Reaparecer en el centro después de 2 segundos
 		await get_tree().create_timer(2.0).timeout
-		position = Vector2(0, 0)
+		position = Vector2(576, 300)
 		velocity = Vector2.ZERO
 		damage_percent = 0.0
+		if sprite:
+			sprite.play("idle")
+		_current_anim = ""
