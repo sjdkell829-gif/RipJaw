@@ -5,8 +5,7 @@
 # ============================================================
 
 extends Node
-
-const BASE_URL = "https://ripjaw-production.up.railway.app"
+const BASE_URL = "https://modest-heart-production-5d40.up.railway.app"
 
 var token: String = ""
 var local_player_id: int = 0
