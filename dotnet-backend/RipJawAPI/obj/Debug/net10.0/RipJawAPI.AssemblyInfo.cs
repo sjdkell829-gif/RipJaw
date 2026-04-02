@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RipJawAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9599c2ae3c0c7e4ba9990ce1578490f11d94b829")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+40d4830a6a7d729e05b131d2d0d269141919c554")]
 [assembly: System.Reflection.AssemblyProductAttribute("RipJawAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RipJawAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -223,7 +223,13 @@ get '/api/players/:id' => sub ($c) {
 # ============================================================
 #   RUTAS: Matchmaking
 # ============================================================
-my %queue;  # player_id => { timestamp, elo }
+my %queue;   # player_id => { timestamp, username }
+my %matches; # room_id => { p1, p2, created_at }
+
+# URL base del servidor (Railway la pone en la variable de entorno)
+my $SERVER_URL = $ENV{RAILWAY_PUBLIC_DOMAIN}
+    ? "wss://$ENV{RAILWAY_PUBLIC_DOMAIN}"
+    : "ws://localhost:3000";
 
 # POST /api/matchmaking/queue — Unirse a la cola
 post '/api/matchmaking/queue' => sub ($c) {
@@ -232,6 +238,20 @@ post '/api/matchmaking/queue' => sub ($c) {
 
     my $player_id = $auth->{player_id};
 
+    # Si ya hay un match esperando para este jugador, devolverlo
+    for my $room_id (keys %matches) {
+        my $m = $matches{$room_id};
+        if ($m->{p1} == $player_id || $m->{p2} == $player_id) {
+            my $opponent_id = $m->{p1} == $player_id ? $m->{p2} : $m->{p1};
+            return $c->render(json => {
+                status      => 'match_found',
+                room_id     => $room_id,
+                opponent_id => $opponent_id,
+                ws_url      => "$SERVER_URL/game/$room_id",
+            });
+        }
+    }
+
     # Agregar a la cola
     $queue{$player_id} = {
         timestamp => time(),
@@ -239,20 +259,26 @@ post '/api/matchmaking/queue' => sub ($c) {
     };
 
     # Buscar oponente (el más antiguo en la cola que no sea yo)
-    my ($opponent_id) = grep { $_ ne $player_id } keys %queue;
+    my ($opponent_id) = sort { $queue{$a}{timestamp} <=> $queue{$b}{timestamp} }
+                        grep { $_ != $player_id } keys %queue;
 
     if ($opponent_id) {
-        # ¡Match encontrado!
+        # Match encontrado — crear room y guardar
         delete $queue{$player_id};
         delete $queue{$opponent_id};
 
-        my $room_id = sprintf("%s_%s_%d", $player_id, $opponent_id, time());
+        my $room_id = sprintf("%d_%d_%d", $player_id, $opponent_id, time());
+        $matches{$room_id} = {
+            p1         => $player_id,
+            p2         => $opponent_id,
+            created_at => time(),
+        };
 
         return $c->render(json => {
             status      => 'match_found',
             room_id     => $room_id,
             opponent_id => $opponent_id,
-            ws_url      => "ws://localhost:3001/game/$room_id",
+            ws_url      => "$SERVER_URL/game/$room_id",
         });
     }
 

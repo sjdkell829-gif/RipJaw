@@ -28,6 +28,7 @@ var _current_anim: String = ""
 
 func _ready():
 	if player_id == 1:
+		# Player 1 usa WASD + F
 		_actions = {
 			"left":   "p1_left",
 			"right":  "p1_right",
@@ -36,6 +37,7 @@ func _ready():
 		}
 		facing_direction = 1.0
 	else:
+		# Player 2 usa flechas + Enter
 		_actions = {
 			"left":   "p2_left",
 			"right":  "p2_right",
@@ -45,10 +47,8 @@ func _ready():
 		facing_direction = -1.0
 	scale.x = facing_direction
 
-	# Verificar que el sprite existe y arrancar animación
 	if sprite:
 		sprite.play("idle")
-		print("Sprite OK — player_id: ", player_id)
 	else:
 		print("ERROR: No se encontró AnimatedSprite2D en player_id: ", player_id)
 
@@ -79,21 +79,15 @@ func _handle_input():
 func _update_animation():
 	if not sprite:
 		return
-
-	# No interrumpir el ataque hasta que termine
 	if _current_anim == "attack" and sprite.is_playing():
 		return
-
 	var new_anim: String
-
 	if not is_on_floor():
 		new_anim = "jump"
 	elif abs(velocity.x) > 10:
 		new_anim = "run"
 	else:
 		new_anim = "idle"
-
-	# Solo cambiar si es diferente para no reiniciar el loop
 	if new_anim != _current_anim:
 		_current_anim = new_anim
 		sprite.play(new_anim)
@@ -104,10 +98,8 @@ func _do_attack():
 	_current_anim = "attack"
 	if sprite:
 		sprite.play("attack")
-		# Volver a idle cuando termine el ataque
 		await sprite.animation_finished
 		_current_anim = ""
-
 	var space = get_world_2d().direct_space_state
 	var query = PhysicsShapeQueryParameters2D.new()
 	var shape = CircleShape2D.new()
@@ -122,7 +114,6 @@ func _do_attack():
 			continue
 		if body.has_method("take_hit"):
 			body.take_hit(attack_damage, global_position)
-
 	await get_tree().create_timer(0.3).timeout
 	can_attack = true
 
