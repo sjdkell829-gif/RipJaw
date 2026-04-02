@@ -69,6 +69,21 @@ sub _init_db {
             played_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     });
+    $db->do(q{
+        CREATE TABLE IF NOT EXISTS queue (
+            player_id  INTEGER PRIMARY KEY,
+            username   TEXT NOT NULL,
+            joined_at  INTEGER NOT NULL
+        )
+    });
+    $db->do(q{
+        CREATE TABLE IF NOT EXISTS rooms (
+            room_id    TEXT PRIMARY KEY,
+            p1_id      INTEGER NOT NULL,
+            p2_id      INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    });
 }
 
 # ============================================================
@@ -223,10 +238,7 @@ get '/api/players/:id' => sub ($c) {
 # ============================================================
 #   RUTAS: Matchmaking
 # ============================================================
-my %queue;   # player_id => { timestamp, username }
-my %matches; # room_id => { p1, p2, created_at }
-
-# URL base del servidor (Railway la pone en la variable de entorno)
+# URL base del servidor
 my $SERVER_URL = $ENV{RAILWAY_PUBLIC_DOMAIN}
     ? "wss://$ENV{RAILWAY_PUBLIC_DOMAIN}"
     : "ws://localhost:3000";
@@ -237,42 +249,45 @@ post '/api/matchmaking/queue' => sub ($c) {
     return unless $auth;
 
     my $player_id = $auth->{player_id};
+    my $db        = get_db();
 
-    # Si ya hay un match esperando para este jugador, devolverlo
-    for my $room_id (keys %matches) {
-        my $m = $matches{$room_id};
-        if ($m->{p1} == $player_id || $m->{p2} == $player_id) {
-            my $opponent_id = $m->{p1} == $player_id ? $m->{p2} : $m->{p1};
-            return $c->render(json => {
-                status      => 'match_found',
-                room_id     => $room_id,
-                opponent_id => $opponent_id,
-                ws_url      => "$SERVER_URL/game/$room_id",
-            });
-        }
+    # Verificar si ya tiene un room asignado
+    my $room = $db->selectrow_hashref(
+        "SELECT room_id, p1_id, p2_id FROM rooms WHERE p1_id = ? OR p2_id = ? ORDER BY created_at DESC LIMIT 1",
+        undef, $player_id, $player_id
+    );
+    if ($room) {
+        my $opponent_id = $room->{p1_id} == $player_id ? $room->{p2_id} : $room->{p1_id};
+        return $c->render(json => {
+            status      => 'match_found',
+            room_id     => $room->{room_id},
+            opponent_id => $opponent_id,
+            ws_url      => "$SERVER_URL/game/$room->{room_id}",
+        });
     }
 
-    # Agregar a la cola
-    $queue{$player_id} = {
-        timestamp => time(),
-        username  => $auth->{username},
-    };
+    # Agregar o actualizar en la cola
+    $db->do(
+        "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
+        undef, $player_id, $auth->{username}, time()
+    );
 
-    # Buscar oponente (el más antiguo en la cola que no sea yo)
-    my ($opponent_id) = sort { $queue{$a}{timestamp} <=> $queue{$b}{timestamp} }
-                        grep { $_ != $player_id } keys %queue;
+    # Buscar oponente (el primero en la cola que no sea yo)
+    my $opponent = $db->selectrow_hashref(
+        "SELECT player_id FROM queue WHERE player_id != ? ORDER BY joined_at ASC LIMIT 1",
+        undef, $player_id
+    );
 
-    if ($opponent_id) {
-        # Match encontrado — crear room y guardar
-        delete $queue{$player_id};
-        delete $queue{$opponent_id};
+    if ($opponent) {
+        my $opponent_id = $opponent->{player_id};
+        my $room_id     = sprintf("%d_%d_%d", $player_id, $opponent_id, time());
 
-        my $room_id = sprintf("%d_%d_%d", $player_id, $opponent_id, time());
-        $matches{$room_id} = {
-            p1         => $player_id,
-            p2         => $opponent_id,
-            created_at => time(),
-        };
+        # Guardar room y limpiar cola
+        $db->do(
+            "INSERT INTO rooms (room_id, p1_id, p2_id, created_at) VALUES (?, ?, ?, ?)",
+            undef, $room_id, $player_id, $opponent_id, time()
+        );
+        $db->do("DELETE FROM queue WHERE player_id IN (?, ?)", undef, $player_id, $opponent_id);
 
         return $c->render(json => {
             status      => 'match_found',
@@ -292,7 +307,7 @@ post '/api/matchmaking/queue' => sub ($c) {
 del '/api/matchmaking/queue' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
-    delete $queue{$auth->{player_id}};
+get_db()->do("DELETE FROM queue WHERE player_id = ?", undef, $auth->{player_id});
     $c->render(json => { message => 'Saliste de la cola' });
 };
 
