@@ -6,4 +6,8 @@
 script = ExtResource("1_qoquo")
 move_speed = 300.0
 jump_force = -650.0
+<<<<<<< HEAD
+=======
+weight = 0.8
+>>>>>>> f2110dbb57e2ed5901d88cc2a0d440af29a0d7c8
 attack_damage = 12

@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://lifdk47mqaui" path="res://scripts/game_manager.gd" id="1_yqjtg"]
 [ext_resource type="Script" uid="uid://c24jotppy0an0" path="res://scripts/fighter.gd" id="2_lnu2h"]
 [ext_resource type="Texture2D" uid="uid://hhkmvetm368p" path="res://assets/Gemini_Generated_Image_1tbzng1tbzng1tbz-removebg-preview.png" id="3_lbhrr"]
-[ext_resource type="Resource" uid="uid://bp143ts1bh6gj" path="res://scripts/stats_deku.tres" id="3_u5sy4"]
 [ext_resource type="Texture2D" uid="uid://dsvawukssuw3x" path="res://assets/Gemini_Generated_Image_2ee56f2ee56f2ee5 (1) (1).png" id="4_iywne"]
 [ext_resource type="Resource" uid="uid://3rmnj0fkmuy8" path="res://scripts/stats_baki.tres" id="5_gee14"]
 [ext_resource type="Texture2D" uid="uid://dsn6uu4iyio4d" path="res://assets/2DGrassyPlatformerSprites.png" id="7_u5sy4"]
@@ -210,7 +209,7 @@ script = ExtResource("1_yqjtg")
 [node name="Player1" type="CharacterBody2D" parent="." unique_id=48887886]
 position = Vector2(300, 450)
 script = ExtResource("2_lnu2h")
-stats = ExtResource("3_u5sy4")
+stats = ExtResource("5_gee14")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player1" unique_id=1547226800]
 position = Vector2(4, -33)
