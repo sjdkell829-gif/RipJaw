@@ -9,7 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://dsn6uu4iyio4d" path="res://assets/2DGrassyPlatformerSprites.png" id="7_u5sy4"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_u5sy4"]
-radius = 20.0
+radius = 11.0
 height = 96.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_p57ef"]
@@ -59,7 +59,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attack",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -109,8 +109,7 @@ _data = {
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_gee14"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_iywne"]
-radius = 16.0
-height = 98.0
+height = 102.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ir15t"]
 atlas = ExtResource("4_iywne")
@@ -159,7 +158,7 @@ animations = [{
 }],
 "loop": false,
 "name": &"attack",
-"speed": 10.0
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -213,7 +212,7 @@ script = ExtResource("2_lnu2h")
 stats = ExtResource("3_u5sy4")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player1" unique_id=1547226800]
-position = Vector2(4, -33)
+position = Vector2(0, -33)
 shape = SubResource("CapsuleShape2D_u5sy4")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Player1" unique_id=1248660120]
@@ -238,7 +237,7 @@ script = ExtResource("2_lnu2h")
 stats = ExtResource("5_gee14")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player2" unique_id=1857183937]
-position = Vector2(6, -33)
+position = Vector2(0, -33)
 shape = SubResource("CapsuleShape2D_iywne")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Player2" unique_id=2044296058]

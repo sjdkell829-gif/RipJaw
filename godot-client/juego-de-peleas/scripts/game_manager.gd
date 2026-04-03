@@ -1,7 +1,3 @@
-# ============================================================
-#   SmashAPI — game_manager.gd
-#   Adjuntar al nodo raíz de la escena de juego
-# ============================================================
 extends Node
 
 var room_id: String  = ""
@@ -13,40 +9,64 @@ var opponent_id: int = 0
 @onready var p1_damage: Label = $HUD/P1Damage
 @onready var p2_damage: Label = $HUD/P2Damage
 @onready var timer_label: Label = $HUD/Timer
+@onready var victory_label: Label = $HUD/VictoryLabel
 
 var game_time: float   = 180.0
 var time_left: float   = 180.0
 var game_running: bool = false
+var game_ended: bool   = false
+
+var local_fighter
+var remote_fighter
 
 
 func _ready():
+	if victory_label:
+		victory_label.hide()
+
 	room_id     = GameData.room_id
 	ws_url      = GameData.ws_url
 	opponent_id = GameData.opponent_id
 
-	# Player 1: siempre local, usa player_id 1 si no hay sesión iniciada
-	player1.player_id       = ApiClient.local_player_id if ApiClient.local_player_id != 0 else 1
-	player1.is_local_player = true
+	if room_id == "":
+		# ── Modo local ──────────────────────────────────────
+		player1.setup(1, true)
+		player2.setup(2, true)
+		local_fighter  = player1
+		remote_fighter = player2
+		game_running   = true
+	else:
+		# ── Modo online ─────────────────────────────────────
+		var parts   = room_id.split("_")
+		var room_p1 = int(parts[0]) if parts.size() >= 2 else 0
 
-	# Player 2: local en modo offline, remoto en modo online
-	player2.player_id       = opponent_id if opponent_id != 0 else 2
-	player2.is_local_player = (room_id == "")  # ← clave: P2 se controla local si no hay sala online
+		if ApiClient.local_player_id == room_p1:
+			player1.setup(ApiClient.local_player_id, true)
+			player2.setup(opponent_id, false)
+			local_fighter  = player1
+			remote_fighter = player2
+		else:
+			player1.setup(opponent_id, false)
+			player2.setup(ApiClient.local_player_id, true)
+			local_fighter  = player2
+			remote_fighter = player1
 
 	player1.took_damage.connect(_on_damage_updated)
 	player1.died.connect(_on_player_died)
 	player2.took_damage.connect(_on_damage_updated)
 	player2.died.connect(_on_player_died)
 
-	# Conectar WebSocket solo si hay sala online
+	# Conectar WebSocket si hay sala online
 	var ws = get_node_or_null("/root/WebSocketClient")
 	if ws and ws_url != "":
 		ws.game_started.connect(_on_game_started)
 		ws.game_state_received.connect(_on_game_state)
 		ws.game_over.connect(_on_game_over)
 		await ws.connect_to_room(ws_url, room_id)
-	else:
-		# Modo local: ambos jugadores activos desde el inicio
-		game_running = true
+		# Si el WebSocket no dispara game_started en 3 segundos, iniciar de todas formas
+		await get_tree().create_timer(3.0).timeout
+		if not game_running:
+			game_running = true
 
 
 func _process(delta):
@@ -64,14 +84,12 @@ func _on_game_started():
 
 
 func _on_game_state(data: Dictionary):
-	# En online, Player2 recibe estado remoto (no es local)
-	player2.apply_remote_state(data)
+	if remote_fighter:
+		remote_fighter.apply_remote_state(data)
 
 
-func _on_game_over(winner: String):
-	game_running = false
-	var local_won = winner == str(ApiClient.local_player_id)
-	_report_and_exit(local_won)
+func _on_game_over(_winner: String):
+	_end_game()
 
 
 func _on_damage_updated(pid: int, percent: float):
@@ -83,18 +101,31 @@ func _on_damage_updated(pid: int, percent: float):
 			p2_damage.text = "P2: %.0f%%" % percent
 
 
-func _on_player_died(pid: int):
-	if (pid == player1.player_id and player1.stocks <= 0) or \
-	   (pid == player2.player_id and player2.stocks <= 0):
+func _on_player_died(_pid: int):
+	await get_tree().process_frame
+	if local_fighter == null or remote_fighter == null:
+		return
+	if local_fighter.stocks <= 0 or remote_fighter.stocks <= 0:
 		_end_game()
 
 
 func _end_game():
-	if not game_running:
+	if game_ended:
 		return
+	game_ended = true
 	game_running = false
-	var local_won = player1.stocks > player2.stocks or \
-		(player1.stocks == player2.stocks and player1.damage_percent < player2.damage_percent)
+
+	var local_won: bool = false
+	if local_fighter != null and remote_fighter != null:
+		if local_fighter.stocks > remote_fighter.stocks:
+			local_won = true
+		elif local_fighter.stocks == remote_fighter.stocks:
+			local_won = local_fighter.damage_percent <= remote_fighter.damage_percent
+
+	if victory_label:
+		victory_label.text = "¡VICTORIA!" if local_won else "¡DERROTA!"
+		victory_label.show()
+
 	_report_and_exit(local_won)
 
 
