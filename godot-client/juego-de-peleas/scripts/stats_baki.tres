@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="FighterStats" format=3 uid="uid://3rmnj0fkmuy8"]
+
+[ext_resource type="Script" uid="uid://cwl8qxi1rvj61" path="res://scripts/fighter_stats.gd" id="1_nc7ol"]
+
+[resource]
+script = ExtResource("1_nc7ol")
+move_speed = 200.0
+jump_force = -650.0
+weight = 1.2
+attack_damage = 18

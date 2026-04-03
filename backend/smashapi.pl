@@ -266,26 +266,25 @@ post '/api/matchmaking/queue' => sub ($c) {
         });
     }
 
-    # Agregar o actualizar en la cola
-    $db->do(
-        "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
-        undef, $player_id, $auth->{username}, time()
-    );
-
-    # Buscar oponente (el primero en la cola que no sea yo)
+    # Buscar si hay alguien esperando en la cola
     my $opponent = $db->selectrow_hashref(
         "SELECT player_id FROM queue WHERE player_id != ? ORDER BY joined_at ASC LIMIT 1",
         undef, $player_id
     );
 
     if ($opponent) {
+        # Hay alguien esperando — el que llega segundo crea el room
         my $opponent_id = $opponent->{player_id};
-        my $room_id     = sprintf("%d_%d_%d", $player_id, $opponent_id, time());
+
+        # El que llego primero es p1, el segundo es p2
+        my $p1_id   = $opponent_id;
+        my $p2_id   = $player_id;
+        my $room_id = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
 
         # Guardar room y limpiar cola
         $db->do(
             "INSERT INTO rooms (room_id, p1_id, p2_id, created_at) VALUES (?, ?, ?, ?)",
-            undef, $room_id, $player_id, $opponent_id, time()
+            undef, $room_id, $p1_id, $p2_id, time()
         );
         $db->do("DELETE FROM queue WHERE player_id IN (?, ?)", undef, $player_id, $opponent_id);
 
@@ -297,6 +296,12 @@ post '/api/matchmaking/queue' => sub ($c) {
         });
     }
 
+    # No hay nadie — agregar a la cola y esperar
+    $db->do(
+        "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
+        undef, $player_id, $auth->{username}, time()
+    );
+
     $c->render(json => {
         status  => 'waiting',
         message => 'Buscando oponente...',
@@ -307,7 +312,7 @@ post '/api/matchmaking/queue' => sub ($c) {
 del '/api/matchmaking/queue' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
-get_db()->do("DELETE FROM queue WHERE player_id = ?", undef, $auth->{player_id});
+    delete $queue{$auth->{player_id}};
     $c->render(json => { message => 'Saliste de la cola' });
 };
 
