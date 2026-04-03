@@ -238,6 +238,8 @@ func _on_ranking_pressed():
 
 
 func _on_queue_result(data: Dictionary):
+	if not _searching:
+		return  # ← ignorar si ya encontramos match
 	if data.get("status") == "match_found":
 		_searching = false
 		searching_label.text = "¡Oponente encontrado! Cargando..."

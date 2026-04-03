@@ -5,6 +5,7 @@
 # ============================================================
 
 extends Node
+
 const BASE_URL = "https://ripjaw-production-2299.up.railway.app"
 
 var token: String = ""
