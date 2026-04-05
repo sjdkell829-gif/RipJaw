@@ -1,9 +1,6 @@
 # ============================================================
 #   SmashAPI — api_client.gd
-#   Maneja todas las llamadas HTTP REST al servidor Perl
-#   Agregar como AutoLoad en Project > Project Settings > AutoLoad
 # ============================================================
-
 extends Node
 
 const BASE_URL = "https://ripjaw-production-2299.up.railway.app"
@@ -23,6 +20,24 @@ signal result_saved()
 
 func _ready():
 	token = ProjectSettings.get_setting("user_token", "")
+	if token != "":
+		_restore_session()
+
+
+func _restore_session():
+	var http = _http_get("/api/auth/me", true)
+	http.request_completed.connect(func(result, code, _headers, body):
+		http.queue_free()
+		if code == 200:
+			var data = _http_parse(body)
+			local_player_id = data.get("id", 0)
+			local_username  = data.get("username", "")
+			print("Sesión restaurada: ", local_username, " id:", local_player_id)
+		else:
+			token           = ""
+			local_player_id = 0
+			ProjectSettings.set_setting("user_token", "")
+	)
 
 
 # ── Helpers HTTP ───────────────────────────────────────────
@@ -48,14 +63,15 @@ func _http_get(endpoint: String, auth: bool = false) -> HTTPRequest:
 	return http
 
 
-func _http_delete(endpoint: String) -> HTTPRequest:
+func _http_delete(endpoint: String, body: Dictionary = {}) -> HTTPRequest:
 	var http = HTTPRequest.new()
 	add_child(http)
 	var headers = [
 		"Content-Type: application/json",
 		"Authorization: Bearer " + token
 	]
-	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_DELETE)
+	var json_body = JSON.stringify(body)
+	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_DELETE, json_body)
 	return http
 
 
@@ -72,7 +88,7 @@ func _http_parse(body: PackedByteArray) -> Dictionary:
 func register(username: String, email: String, password: String):
 	var http = _http_post("/api/auth/register", {
 		"username": username,
-		"email": email,
+		"email":    email,
 		"password": password
 	})
 	http.request_completed.connect(func(result, code, _headers, body):
@@ -108,8 +124,8 @@ func login(username: String, password: String):
 
 # ── Matchmaking ────────────────────────────────────────────
 
-func join_queue():
-	var http = _http_post("/api/matchmaking/queue", {}, true)
+func join_queue(stocks: int = 3):
+	var http = _http_post("/api/matchmaking/queue", { "stocks": stocks }, true)
 	http.request_completed.connect(func(result, code, _headers, body):
 		http.queue_free()
 		var data = _http_parse(body)
@@ -119,6 +135,13 @@ func join_queue():
 
 func leave_queue():
 	var http = _http_delete("/api/matchmaking/queue")
+	http.request_completed.connect(func(_r, _c, _h, _b):
+		http.queue_free()
+	)
+
+
+func cleanup_room(room_id: String):
+	var http = _http_delete("/api/match/room", { "room_id": room_id })
 	http.request_completed.connect(func(_r, _c, _h, _b):
 		http.queue_free()
 	)
@@ -139,9 +162,9 @@ func get_ranking():
 
 func report_result(room_id: String, winner_id: int, loser_id: int):
 	var http = _http_post("/api/match/result", {
-		"room_id": room_id,
+		"room_id":   room_id,
 		"winner_id": winner_id,
-		"loser_id": loser_id
+		"loser_id":  loser_id
 	}, true)
 	http.request_completed.connect(func(_r, _c, _h, _b):
 		http.queue_free()
@@ -154,3 +177,4 @@ func report_result(room_id: String, winner_id: int, loser_id: int):
 func _save_token(t: String):
 	token = t
 	ProjectSettings.set_setting("user_token", t)
+	ProjectSettings.save()

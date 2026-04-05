@@ -3,7 +3,6 @@
 #   Sincronización en tiempo real con el servidor
 #   Agregar como AutoLoad en Project > Project Settings > AutoLoad
 # ============================================================
-
 extends Node
 
 signal connected()
@@ -45,10 +44,12 @@ func connect_to_room(ws_url: String, room_id: String):
 		push_error("[WS] No se pudo conectar: " + str(err))
 		return
 
-	# Esperar a que abra la conexión
 	await _wait_for_open()
 	_connected = true
 	connected.emit()
+	# Emitir game_started al conectar sin esperar al servidor
+	# Esto evita que el juego tarde 3 segundos en iniciar
+	game_started.emit()
 	print("[WS] Conectado al room: ", room_id)
 
 
@@ -63,11 +64,11 @@ func send_input(x: float, y: float, attacking: bool, jumping: bool):
 	if not _connected:
 		return
 	var msg = JSON.stringify({
-		"type": "input",
-		"x": x,
-		"y": y,
+		"type":      "input",
+		"x":         x,
+		"y":         y,
 		"attacking": attacking,
-		"jumping": jumping
+		"jumping":   jumping
 	})
 	_socket.send_text(msg)
 
@@ -76,7 +77,7 @@ func send_hit(target_player_id: int, damage: int):
 	if not _connected:
 		return
 	var msg = JSON.stringify({
-		"type": "player_hit",
+		"type":   "player_hit",
 		"target": str(target_player_id),
 		"damage": damage
 	})

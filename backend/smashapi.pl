@@ -8,7 +8,6 @@ use Mojo::JSON qw(decode_json encode_json);
 #   SmashAPI — Backend Principal (Perl + Mojolicious)
 # ============================================================
 
-# Configuración
 my $SECRET = $ENV{JWT_SECRET} // 'smashapi_secret_cambiar_en_produccion';
 app->config(
     hypnotoad => {
@@ -125,7 +124,6 @@ helper auth_required => sub ($c) {
 #   RUTAS: Autenticación
 # ============================================================
 
-# POST /api/auth/register
 post '/api/auth/register' => sub ($c) {
     my $params   = $c->req->json;
     my $username = $params->{username} // '';
@@ -138,7 +136,6 @@ post '/api/auth/register' => sub ($c) {
 
     my $db = get_db();
 
-    # Verificar si ya existe
     my $exists = $db->selectrow_hashref(
         "SELECT id FROM players WHERE username = ? OR email = ?",
         undef, $username, $email
@@ -147,7 +144,6 @@ post '/api/auth/register' => sub ($c) {
         return $c->render(json => { error => 'Usuario o email ya existe' }, status => 409);
     }
 
-    # Hash de contraseña (simple para ejemplo — usar bcrypt en producción)
     use Digest::SHA qw(sha256_hex);
     my $pass_hash = sha256_hex($password . $SECRET);
 
@@ -167,7 +163,6 @@ post '/api/auth/register' => sub ($c) {
     }, status => 201);
 };
 
-# POST /api/auth/login
 post '/api/auth/login' => sub ($c) {
     my $params   = $c->req->json;
     my $username = $params->{username} // '';
@@ -196,7 +191,6 @@ post '/api/auth/login' => sub ($c) {
     });
 };
 
-# GET /api/auth/me
 get '/api/auth/me' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
@@ -214,7 +208,6 @@ get '/api/auth/me' => sub ($c) {
 #   RUTAS: Jugadores
 # ============================================================
 
-# GET /api/players/ranking — Top 100
 get '/api/players/ranking' => sub ($c) {
     my $db = get_db();
     my $players = $db->selectall_arrayref(
@@ -224,7 +217,6 @@ get '/api/players/ranking' => sub ($c) {
     $c->render(json => { ranking => $players });
 };
 
-# GET /api/players/:id — Perfil
 get '/api/players/:id' => sub ($c) {
     my $db     = get_db();
     my $player = $db->selectrow_hashref(
@@ -238,12 +230,10 @@ get '/api/players/:id' => sub ($c) {
 # ============================================================
 #   RUTAS: Matchmaking
 # ============================================================
-# URL base del servidor
 my $SERVER_URL = $ENV{RAILWAY_PUBLIC_DOMAIN}
     ? "wss://$ENV{RAILWAY_PUBLIC_DOMAIN}"
     : "ws://localhost:3000";
 
-# POST /api/matchmaking/queue — Unirse a la cola
 post '/api/matchmaking/queue' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
@@ -253,7 +243,7 @@ post '/api/matchmaking/queue' => sub ($c) {
 
     # Verificar si ya tiene un room asignado
     my $room = $db->selectrow_hashref(
-        "SELECT room_id, p1_id, p2_id FROM rooms WHERE p1_id = ? OR p2_id = ? ORDER BY created_at DESC LIMIT 1",
+        "SELECT room_id, p1_id, p2_id FROM rooms WHERE (p1_id = ? OR p2_id = ?) ORDER BY created_at DESC LIMIT 1",
         undef, $player_id, $player_id
     );
     if ($room) {
@@ -266,22 +256,18 @@ post '/api/matchmaking/queue' => sub ($c) {
         });
     }
 
-    # Buscar si hay alguien esperando en la cola
+    # Buscar oponente en la cola
     my $opponent = $db->selectrow_hashref(
         "SELECT player_id FROM queue WHERE player_id != ? ORDER BY joined_at ASC LIMIT 1",
         undef, $player_id
     );
 
     if ($opponent) {
-        # Hay alguien esperando — el que llega segundo crea el room
         my $opponent_id = $opponent->{player_id};
+        my $p1_id       = $opponent_id;  # El que esperó más es P1
+        my $p2_id       = $player_id;
+        my $room_id     = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
 
-        # El que llego primero es p1, el segundo es p2
-        my $p1_id   = $opponent_id;
-        my $p2_id   = $player_id;
-        my $room_id = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
-
-        # Guardar room y limpiar cola
         $db->do(
             "INSERT INTO rooms (room_id, p1_id, p2_id, created_at) VALUES (?, ?, ?, ?)",
             undef, $room_id, $p1_id, $p2_id, time()
@@ -296,7 +282,7 @@ post '/api/matchmaking/queue' => sub ($c) {
         });
     }
 
-    # No hay nadie — agregar a la cola y esperar
+    # No hay oponente — agregar a la cola
     $db->do(
         "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
         undef, $player_id, $auth->{username}, time()
@@ -312,7 +298,8 @@ post '/api/matchmaking/queue' => sub ($c) {
 del '/api/matchmaking/queue' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
-    delete $queue{$auth->{player_id}};
+    my $db = get_db();
+    $db->do("DELETE FROM queue WHERE player_id = ?", undef, $auth->{player_id});
     $c->render(json => { message => 'Saliste de la cola' });
 };
 
@@ -320,7 +307,6 @@ del '/api/matchmaking/queue' => sub ($c) {
 #   RUTAS: Partidas
 # ============================================================
 
-# POST /api/match/result — Reportar resultado
 post '/api/match/result' => sub ($c) {
     my $auth   = $c->auth_required;
     return unless $auth;
@@ -336,14 +322,23 @@ post '/api/match/result' => sub ($c) {
         undef, $room_id, $winner_id, $loser_id
     );
 
-    # Actualizar stats
-    $db->do("UPDATE players SET wins = wins + 1, elo = elo + 25 WHERE id = ?",  undef, $winner_id);
+    $db->do("UPDATE players SET wins = wins + 1, elo = elo + 25 WHERE id = ?", undef, $winner_id);
     $db->do("UPDATE players SET losses = losses + 1, elo = MAX(0, elo - 15) WHERE id = ?", undef, $loser_id);
 
     $c->render(json => { message => 'Resultado guardado', elo_change => { winner => '+25', loser => '-15' } });
 };
 
-# GET /api/match/history/:player_id — Historial
+# DELETE /api/match/room — Limpiar room al terminar partida
+del '/api/match/room' => sub ($c) {
+    my $auth = $c->auth_required;
+    return unless $auth;
+    my $params  = $c->req->json // {};
+    my $room_id = $params->{room_id} // '';
+    my $db      = get_db();
+    $db->do("DELETE FROM rooms WHERE room_id = ?", undef, $room_id);
+    $c->render(json => { message => 'Room eliminado' });
+};
+
 get '/api/match/history/:player_id' => sub ($c) {
     my $db      = get_db();
     my $matches = $db->selectall_arrayref(
@@ -362,18 +357,16 @@ get '/api/match/history/:player_id' => sub ($c) {
 # ============================================================
 #   WebSocket — Sincronización en tiempo real
 # ============================================================
-my %rooms;  # room_id => [ connection1, connection2 ]
+my %rooms;
 
 websocket '/game/:room_id' => sub ($c) {
     my $room_id = $c->param('room_id');
     $c->inactivity_timeout(0);
 
-    # Unir al room
     push @{$rooms{$room_id}}, $c->tx;
     my $player_num = scalar @{$rooms{$room_id}};
     app->log->info("Jugador $player_num se unió al room $room_id");
 
-    # Notificar si ya hay 2 jugadores
     if ($player_num == 2) {
         for my $tx (@{$rooms{$room_id}}) {
             $tx->send({ json => { type => 'game_start', message => '¡La batalla comienza!' } });
@@ -381,9 +374,9 @@ websocket '/game/:room_id' => sub ($c) {
     }
 
     $c->on(message => sub ($c, $msg) {
-        my $data = decode_json($msg);
+        my $data = eval { decode_json($msg) };
+        return unless $data;
 
-        # Broadcast a todos en el room (excepto el remitente)
         for my $tx (@{$rooms{$room_id}}) {
             next if $tx == $c->tx;
             $tx->send({ json => $data });
@@ -391,7 +384,6 @@ websocket '/game/:room_id' => sub ($c) {
     });
 
     $c->on(finish => sub ($c, $code, $reason) {
-        # Limpiar conexión del room
         $rooms{$room_id} = [grep { $_ != $c->tx } @{$rooms{$room_id} // []}];
         delete $rooms{$room_id} unless @{$rooms{$room_id}};
         app->log->info("Jugador salió del room $room_id");

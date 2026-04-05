@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FighterStats" format=3 uid="uid://cxdxd03g77p7i"]
+
+[ext_resource type="Script" uid="uid://cwl8qxi1rvj61" path="res://scripts/fighter_stats.gd" id="1_qoquo"]
+[ext_resource type="AudioStream" uid="uid://bh6ceat74rylf" path="res://attack.wav" id="2_1fwbm"]
+[ext_resource type="AudioStream" uid="uid://dhb3wq03o7xhy" path="res://death.wav" id="3_wi53m"]
+[ext_resource type="AudioStream" uid="uid://dydtc1ch10kjy" path="res://hitBaki.wav" id="4_f7nfj"]
+[ext_resource type="AudioStream" uid="uid://b1pmbvbddjb3k" path="res://jump.wav" id="5_l1yn4"]
+
+[resource]
+script = ExtResource("1_qoquo")
+weight = 0.8
+attack_damage = 15
+sfx_jump = ExtResource("5_l1yn4")
+sfx_attack = ExtResource("2_1fwbm")
+sfx_hit = ExtResource("4_f7nfj")
+sfx_death = ExtResource("3_wi53m")
+sfx_land = ExtResource("5_l1yn4")

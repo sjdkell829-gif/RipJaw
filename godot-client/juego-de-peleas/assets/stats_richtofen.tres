@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="FighterStats" format=3 uid="uid://cpu413je746na"]
+
+[ext_resource type="Script" uid="uid://cwl8qxi1rvj61" path="res://scripts/fighter_stats.gd" id="1_56tqq"]
+[ext_resource type="PackedScene" uid="uid://7pbx1hust1lb" path="res://scenes/ray_gun_projectile.tscn" id="1_i4xus"]
+[ext_resource type="AudioStream" uid="uid://dq8i8aqsmh5j6" path="res://AttackRichtofen (mp3cut.net).wav" id="3_l6iib"]
+[ext_resource type="AudioStream" uid="uid://o4mndls6b4jc" path="res://DeathRich (online-video-cutter.com).wav" id="4_uhsmi"]
+[ext_resource type="AudioStream" uid="uid://l28d2wcbni18" path="res://HitRich (mp3cut.net).wav" id="5_tqgiy"]
+[ext_resource type="AudioStream" uid="uid://b1pmbvbddjb3k" path="res://jump.wav" id="6_r4cyf"]
+[ext_resource type="AudioStream" uid="uid://bqtri6bxkivnu" path="res://Especial (mp3cut.net).wav" id="7_r4cyf"]
+
+[resource]
+script = ExtResource("1_56tqq")
+move_speed = 200.0
+jump_force = -650.0
+attack_damage = 20
+has_special = true
+special_cooldown = 2.5
+projectile_scene = ExtResource("1_i4xus")
+sfx_jump = ExtResource("6_r4cyf")
+sfx_attack = ExtResource("3_l6iib")
+sfx_hit = ExtResource("5_tqgiy")
+sfx_death = ExtResource("4_uhsmi")
+sfx_land = ExtResource("6_r4cyf")
+sfx_special = ExtResource("7_r4cyf")

@@ -1,19 +1,13 @@
 extends Control
 
-var _searching: bool = false
-var _search_timer: float = 0.0
-var _dots: int = 0
-
 var login_panel: Panel
 var main_panel: Panel
-var searching_panel: Panel
 
 var username_input: LineEdit
 var password_input: LineEdit
 var login_error: Label
 var welcome_label: Label
 var elo_label: Label
-var searching_label: Label
 
 
 func _ready():
@@ -24,18 +18,11 @@ func _ready():
 	ApiClient.login_error.connect(_on_login_error)
 	ApiClient.register_success.connect(_on_login_success)
 	ApiClient.register_error.connect(_on_login_error)
-	ApiClient.queue_result.connect(_on_queue_result)
-
-
-func _process(delta):
-	if not _searching:
-		return
-	_search_timer += delta
-	if _search_timer >= 2.0:
-		_search_timer = 0.0
-		_dots = (_dots + 1) % 4
-		searching_label.text = "Buscando oponente" + ".".repeat(_dots)
-		ApiClient.join_queue()
+	if ApiClient.local_player_id != 0:
+		_show_panel(main_panel)
+		welcome_label.text = "¡Hola, %s!" % ApiClient.local_username
+		elo_label.text     = "ELO: ..."
+		_load_elo()
 
 
 func _build_ui():
@@ -45,7 +32,6 @@ func _build_ui():
 	add_child(bg)
 	_build_login_panel()
 	_build_main_panel()
-	_build_searching_panel()
 
 
 func _build_login_panel():
@@ -60,14 +46,12 @@ func _build_login_panel():
 	vbox.add_theme_constant_override("separation", 14)
 	login_panel.add_child(vbox)
 
-	# Título
 	var title = Label.new()
 	title.text = "⚡ RIPJAW"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 36)
 	vbox.add_child(title)
 
-	# Botón jugar sin cuenta - PRIMERO y destacado
 	var quick_btn = Button.new()
 	quick_btn.text = "🎮 Jugar sin cuenta"
 	quick_btn.custom_minimum_size = Vector2(400, 55)
@@ -75,8 +59,7 @@ func _build_login_panel():
 	quick_btn.pressed.connect(_on_quick_play_pressed)
 	vbox.add_child(quick_btn)
 
-	var sep = HSeparator.new()
-	vbox.add_child(sep)
+	vbox.add_child(HSeparator.new())
 
 	var or_label = Label.new()
 	or_label.text = "— o inicia sesión —"
@@ -161,43 +144,41 @@ func _build_main_panel():
 	ranking_btn.pressed.connect(_on_ranking_pressed)
 	vbox.add_child(ranking_btn)
 
-
-func _build_searching_panel():
-	searching_panel = Panel.new()
-	searching_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(searching_panel)
-
-	var vbox = VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	vbox.position = Vector2(376, 200)
-	vbox.custom_minimum_size = Vector2(400, 200)
-	vbox.add_theme_constant_override("separation", 20)
-	searching_panel.add_child(vbox)
-
-	searching_label = Label.new()
-	searching_label.text = "Buscando oponente..."
-	searching_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	searching_label.add_theme_font_size_override("font_size", 24)
-	vbox.add_child(searching_label)
-
-	var cancel_btn = Button.new()
-	cancel_btn.text = "Cancelar"
-	cancel_btn.custom_minimum_size = Vector2(400, 44)
-	cancel_btn.pressed.connect(_on_cancel_search_pressed)
-	vbox.add_child(cancel_btn)
+	var logout_btn = Button.new()
+	logout_btn.text = "Cerrar sesión"
+	logout_btn.custom_minimum_size = Vector2(400, 40)
+	logout_btn.add_theme_color_override("font_color", Color(0.8, 0.3, 0.3))
+	logout_btn.pressed.connect(_on_logout_pressed)
+	vbox.add_child(logout_btn)
 
 
 func _show_panel(panel: Panel):
-	login_panel.visible     = (panel == login_panel)
-	main_panel.visible      = (panel == main_panel)
-	searching_panel.visible = (panel == searching_panel)
+	login_panel.visible = (panel == login_panel)
+	main_panel.visible  = (panel == main_panel)
+
+
+func _load_elo():
+	var http = ApiClient._http_get("/api/auth/me", true)
+	http.request_completed.connect(func(result, code, _headers, body):
+		http.queue_free()
+		if code == 200:
+			var data = ApiClient._http_parse(body)
+			elo_label.text = "ELO: %d" % data.get("elo", 1000)
+	)
 
 
 func _on_quick_play_pressed():
 	GameData.room_id     = ""
 	GameData.ws_url      = ""
 	GameData.opponent_id = 0
-	get_tree().change_scene_to_file("res://scenes/game.tscn")
+	get_tree().change_scene_to_file("res://scenes/match_config.tscn")
+
+
+func _on_fight_pressed():
+	GameData.room_id     = ""
+	GameData.ws_url      = ""
+	GameData.opponent_id = 0
+	get_tree().change_scene_to_file("res://scenes/match_config.tscn")
 
 
 func _on_login_pressed():
@@ -213,7 +194,7 @@ func _on_register_pressed():
 
 func _on_login_success(data: Dictionary):
 	welcome_label.text = "¡Hola, %s!" % data.get("username", "")
-	elo_label.text = "ELO: %d" % data.get("elo", 1000)
+	elo_label.text     = "ELO: %d" % data.get("elo", 1000)
 	_show_panel(main_panel)
 
 
@@ -221,30 +202,14 @@ func _on_login_error(msg: String):
 	login_error.text = msg
 
 
-func _on_fight_pressed():
-	_searching = true
-	_search_timer = 2.0
-	_show_panel(searching_panel)
-
-
-func _on_cancel_search_pressed():
-	_searching = false
-	ApiClient.leave_queue()
-	_show_panel(main_panel)
+func _on_logout_pressed():
+	ApiClient.token           = ""
+	ApiClient.local_player_id = 0
+	ApiClient.local_username  = ""
+	ProjectSettings.set_setting("user_token", "")
+	ProjectSettings.save()
+	_show_panel(login_panel)
 
 
 func _on_ranking_pressed():
 	ApiClient.get_ranking()
-
-
-func _on_queue_result(data: Dictionary):
-	if not _searching:
-		return  # ← ignorar si ya encontramos match
-	if data.get("status") == "match_found":
-		_searching = false
-		searching_label.text = "¡Oponente encontrado! Cargando..."
-		GameData.room_id     = data.get("room_id", "")
-		GameData.ws_url      = data.get("ws_url", "")
-		GameData.opponent_id = data.get("opponent_id", 0)
-		await get_tree().create_timer(1.0).timeout
-		get_tree().change_scene_to_file("res://scenes/game.tscn")
