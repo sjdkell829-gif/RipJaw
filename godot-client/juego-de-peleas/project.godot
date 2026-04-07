@@ -8,6 +8,8 @@
 
 config_version=5
 
+user_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF5ZXJfaWQiOjEsInVzZXJuYW1lIjoiRGVzdDk5OSJ9.Hyx9uziaLHT4wZUSJrVREw-ubsZUJCAMicHArSbzdjQ"
+
 [application]
 
 config/name="JuegoDePeleas"
