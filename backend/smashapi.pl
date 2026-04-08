@@ -241,7 +241,12 @@ post '/api/matchmaking/queue' => sub ($c) {
     my $player_id = $auth->{player_id};
     my $db        = get_db();
 
-    # ── ¿Ya tiene room asignado? ───────────────────────────
+    # ── Limpiar rooms y queue con más de 5 minutos ─────────
+    my $cutoff = time() - 300;
+    $db->do("DELETE FROM rooms WHERE created_at < ?", undef, $cutoff);
+    $db->do("DELETE FROM queue WHERE joined_at  < ?", undef, $cutoff);
+
+    # ── ¿Ya tiene room activo (creado hace menos de 5 min)? ─
     my $room = $db->selectrow_hashref(
         "SELECT room_id, p1_id, p2_id FROM rooms
          WHERE (p1_id = ? OR p2_id = ?)
@@ -264,7 +269,7 @@ post '/api/matchmaking/queue' => sub ($c) {
 
     # ── ¿Hay alguien esperando? ────────────────────────────
     my $opponent = $db->selectrow_hashref(
-        "SELECT player_id FROM queue
+        "SELECT player_id, username FROM queue
          WHERE player_id != ?
          ORDER BY joined_at ASC LIMIT 1",
         undef, $player_id
@@ -272,7 +277,7 @@ post '/api/matchmaking/queue' => sub ($c) {
 
     if ($opponent) {
         my $opponent_id = $opponent->{player_id};
-        my $p1_id       = $opponent_id;   # el que esperó más es P1
+        my $p1_id       = $opponent_id;
         my $p2_id       = $player_id;
         my $room_id     = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
 
@@ -286,12 +291,11 @@ post '/api/matchmaking/queue' => sub ($c) {
             undef, $player_id, $opponent_id
         );
 
-        # Este jugador es P2 (llegó después)
         return $c->render(json => {
             status      => 'match_found',
             room_id     => $room_id,
             opponent_id => $opponent_id,
-            is_p1       => \0,
+            is_p1       => \0,          # este jugador es P2
             ws_url      => "$SERVER_URL/game/$room_id",
         });
     }
@@ -405,6 +409,19 @@ websocket '/game/:room_id' => sub ($c) {
     });
 };
 
+# ── DEBUG: ver estado de cola y rooms ──────────────────────
+get '/api/debug/state' => sub ($c) {
+    my $db    = get_db();
+    my $queue = $db->selectall_arrayref(
+        "SELECT player_id, username, joined_at FROM queue",
+        { Slice => {} }
+    );
+    my $rooms = $db->selectall_arrayref(
+        "SELECT room_id, p1_id, p2_id, created_at FROM rooms",
+        { Slice => {} }
+    );
+    $c->render(json => { queue => $queue, rooms => $rooms });
+};
 # ============================================================
 #   Iniciar servidor
 # ============================================================
