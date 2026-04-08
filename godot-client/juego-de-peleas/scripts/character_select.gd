@@ -1,60 +1,62 @@
+# ============================================================
+#   RipJaw — character_select.gd
+# ============================================================
 extends Control
 
-var characters: Array = []
-
-# Escenas de cada personaje — índice debe coincidir con characters array
+var characters:       Array = []
 var character_scenes: Array = [
 	"res://scenes/player_deku.tscn",
 	"res://scenes/player_baki.tscn",
 	"res://scenes/player_richtofen.tscn",
 ]
 
-var p1_cursor: int = 0
-var p2_cursor: int = 1
-var p1_ready: bool = false
-var p2_ready: bool = false
-var p1_is_online: bool = false
+var p1_cursor: int  = 0
+var p2_cursor: int  = 1
+var p1_ready:  bool = false
+var p2_ready:  bool = false
 
-var char_cards: Array = []
-var p1_indicator: Label
-var p2_indicator: Label
-var p1_status: Label
-var p2_status: Label
-var countdown_label: Label
-var _countdown: float = -1.0
+var char_cards:       Array = []
+var p1_indicator:     Label
+var p2_indicator:     Label
+var p1_status:        Label
+var p2_status:        Label
+var countdown_label:  Label
+var _countdown:       float = -1.0
+
+# Online
+var _is_online:       bool = false
+var _opponent_ready:  bool = false
 
 
 func _ready():
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	var deku      = load("res://assets/stats_deku.tres")
-	var baki      = load("res://assets/stats_baki.tres")
-	var richtofen = load("res://assets/stats_richtofen.tres")
-
-	if deku:
-		characters.append(deku)
-	else:
-		push_error("No se encontró stats_deku.tres")
-
-	if baki:
-		characters.append(baki)
-	else:
-		push_error("No se encontró stats_baki.tres")
-
-	if richtofen:
-		characters.append(richtofen)
-	else:
-		push_error("No se encontró stats_richtofen.tres")
+	for res in ["res://assets/stats_deku.tres",
+				"res://assets/stats_baki.tres",
+				"res://assets/stats_richtofen.tres"]:
+		var s = load(res)
+		if s:
+			characters.append(s)
+		else:
+			push_error("No se encontró: " + res)
 
 	if characters.size() > 0:
 		p1_cursor = 0
 		p2_cursor = min(1, characters.size() - 1)
 
-	p1_is_online = GameData.room_id != ""
+	_is_online = GameData.is_online
+
+	# Escuchar mensajes del oponente si es online
+	if _is_online:
+		var ws = get_node_or_null("/root/WebSocketClient")
+		if ws:
+			ws.game_state_received.connect(_on_ws_message)
 
 	_build_ui()
 	_update_cursors()
 
+
+# ── UI ─────────────────────────────────────────────────────
 
 func _build_ui():
 	var bg = ColorRect.new()
@@ -92,7 +94,10 @@ func _build_ui():
 	add_child(p2_panel)
 
 	var hint = Label.new()
-	hint.text = "P1: A/D mover  F confirmar  W cancelar  |  P2: ←/→ mover  Enter confirmar  ↑ cancelar"
+	if _is_online:
+		hint.text = "P1: A/D mover  F confirmar  W cancelar"
+	else:
+		hint.text = "P1: A/D mover  F confirmar  W cancelar  |  P2: ←/→ mover  Enter confirmar  ↑ cancelar"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -112,7 +117,6 @@ func _build_ui():
 func _make_card(index: int) -> PanelContainer:
 	var panel = PanelContainer.new()
 	panel.custom_minimum_size = Vector2(200, 200)
-
 	var vbox = VBoxContainer.new()
 	panel.add_child(vbox)
 
@@ -138,11 +142,14 @@ func _make_player_panel(player_num: int) -> VBoxContainer:
 	vbox.custom_minimum_size = Vector2(300, 120)
 	vbox.add_theme_constant_override("separation", 8)
 
-	var title = Label.new()
-	title.text = "JUGADOR %d" % player_num
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 20)
-	vbox.add_child(title)
+	var title_lbl = Label.new()
+	if _is_online:
+		title_lbl.text = "TÚ" if player_num == 1 else "OPONENTE"
+	else:
+		title_lbl.text = "JUGADOR %d" % player_num
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_font_size_override("font_size", 20)
+	vbox.add_child(title_lbl)
 
 	var char_label = Label.new()
 	char_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -164,6 +171,8 @@ func _make_player_panel(player_num: int) -> VBoxContainer:
 	return vbox
 
 
+# ── Input ──────────────────────────────────────────────────
+
 func _process(delta):
 	if characters.size() == 0:
 		return
@@ -176,43 +185,92 @@ func _process(delta):
 
 
 func _handle_input():
+	# ── P1 (siempre local) ─────────────────────────────────
 	if not p1_ready:
 		if Input.is_action_just_pressed("p1_left"):
 			p1_cursor = (p1_cursor - 1 + characters.size()) % characters.size()
 			_update_cursors()
+			_broadcast_cursor()
 		if Input.is_action_just_pressed("p1_right"):
 			p1_cursor = (p1_cursor + 1) % characters.size()
 			_update_cursors()
+			_broadcast_cursor()
 		if Input.is_action_just_pressed("p1_attack"):
 			p1_ready = true
 			_update_cursors()
+			_broadcast_ready()
 			_check_both_ready()
 	else:
 		if Input.is_action_just_pressed("p1_jump"):
-			p1_ready  = false
+			p1_ready   = false
+			_countdown = -1.0
+			countdown_label.hide()
+			_update_cursors()
+			_broadcast_cursor()
+
+	# ── P2 solo en modo local ──────────────────────────────
+	if _is_online:
+		return
+
+	if not p2_ready:
+		if Input.is_action_just_pressed("p2_left"):
+			p2_cursor = (p2_cursor - 1 + characters.size()) % characters.size()
+			_update_cursors()
+		if Input.is_action_just_pressed("p2_right"):
+			p2_cursor = (p2_cursor + 1) % characters.size()
+			_update_cursors()
+		if Input.is_action_just_pressed("p2_attack"):
+			p2_ready = true
+			_update_cursors()
+			_check_both_ready()
+	else:
+		if Input.is_action_just_pressed("p2_jump"):
+			p2_ready   = false
 			_countdown = -1.0
 			countdown_label.hide()
 			_update_cursors()
 
-	if not p1_is_online:
-		if not p2_ready:
-			if Input.is_action_just_pressed("p2_left"):
-				p2_cursor = (p2_cursor - 1 + characters.size()) % characters.size()
-				_update_cursors()
-			if Input.is_action_just_pressed("p2_right"):
-				p2_cursor = (p2_cursor + 1) % characters.size()
-				_update_cursors()
-			if Input.is_action_just_pressed("p2_attack"):
-				p2_ready = true
-				_update_cursors()
-				_check_both_ready()
-		else:
-			if Input.is_action_just_pressed("p2_jump"):
-				p2_ready  = false
-				_countdown = -1.0
-				countdown_label.hide()
-				_update_cursors()
 
+# ── WebSocket online ───────────────────────────────────────
+
+func _broadcast_cursor():
+	if not _is_online:
+		return
+	var ws = get_node_or_null("/root/WebSocketClient")
+	if ws:
+		ws._socket.send_text(JSON.stringify({
+			"type":         "char_cursor",
+			"char_index":   p1_cursor
+		}))
+
+
+func _broadcast_ready():
+	if not _is_online:
+		return
+	var ws = get_node_or_null("/root/WebSocketClient")
+	if ws:
+		ws._socket.send_text(JSON.stringify({
+			"type":         "char_ready",
+			"char_index":   p1_cursor
+		}))
+
+
+func _on_ws_message(data: Dictionary):
+	match data.get("type", ""):
+		"char_cursor":
+			var idx = int(data.get("char_index", 0))
+			p2_cursor = clamp(idx, 0, characters.size() - 1)
+			_update_cursors()
+		"char_ready":
+			var idx = int(data.get("char_index", 0))
+			p2_cursor  = clamp(idx, 0, characters.size() - 1)
+			p2_ready   = true
+			GameData.opponent_char_index = p2_cursor
+			_update_cursors()
+			_check_both_ready()
+
+
+# ── Cursores / display ─────────────────────────────────────
 
 func _update_cursors():
 	for i in char_cards.size():
@@ -244,27 +302,40 @@ func _update_cursors():
 		p1_status.add_theme_color_override("font_color", Color.GREEN if p1_ready else Color.WHITE)
 
 	if p2_status:
-		if p1_is_online:
-			p2_status.text = "Esperando oponente..."
+		if _is_online:
+			if p2_ready:
+				p2_status.text = "✅ LISTO"
+				p2_status.add_theme_color_override("font_color", Color.GREEN)
+			else:
+				p2_status.text = "Esperando oponente..."
+				p2_status.add_theme_color_override("font_color", Color.WHITE)
 		else:
 			p2_status.text = "✅ LISTO" if p2_ready else "Presiona Enter para confirmar"
 			p2_status.add_theme_color_override("font_color", Color.GREEN if p2_ready else Color.WHITE)
 
 
 func _check_both_ready():
-	var both = p1_ready and (p2_ready or p1_is_online)
-	if both and _countdown < 0:
+	if p1_ready and p2_ready and _countdown < 0:
 		_countdown = 3.0
 		countdown_label.show()
 
 
 func _start_game():
 	countdown_label.hide()
-	GameData.p1_stats = characters[p1_cursor]
-	GameData.p2_stats = characters[p2_cursor] if not p1_is_online else characters[p1_cursor]
 
-	# Guardar qué escena usar para cada jugador
+	# ── Stats P1 (siempre local) ───────────────────────────
+	GameData.p1_stats = characters[p1_cursor]
 	GameData.p1_scene = character_scenes[p1_cursor] if p1_cursor < character_scenes.size() else character_scenes[0]
-	GameData.p2_scene = character_scenes[p2_cursor] if p2_cursor < character_scenes.size() else character_scenes[0]
+
+	# ── Stats P2 ───────────────────────────────────────────
+	var p2_idx = p2_cursor if not _is_online else GameData.opponent_char_index
+	GameData.p2_stats = characters[p2_idx]
+	GameData.p2_scene = character_scenes[p2_idx] if p2_idx < character_scenes.size() else character_scenes[0]
+
+	# ── Conectar WS justo antes de entrar al juego ─────────
+	if _is_online:
+		var ws = get_node_or_null("/root/WebSocketClient")
+		if ws and not ws.is_connected_to_room:
+			ws.connect_to_room(GameData.ws_url, GameData.room_id)
 
 	get_tree().change_scene_to_file("res://scenes/game.tscn")

@@ -241,50 +241,65 @@ post '/api/matchmaking/queue' => sub ($c) {
     my $player_id = $auth->{player_id};
     my $db        = get_db();
 
-    # Verificar si ya tiene un room asignado
+    # ── ¿Ya tiene room asignado? ───────────────────────────
     my $room = $db->selectrow_hashref(
-        "SELECT room_id, p1_id, p2_id FROM rooms WHERE (p1_id = ? OR p2_id = ?) ORDER BY created_at DESC LIMIT 1",
+        "SELECT room_id, p1_id, p2_id FROM rooms
+         WHERE (p1_id = ? OR p2_id = ?)
+         ORDER BY created_at DESC LIMIT 1",
         undef, $player_id, $player_id
     );
     if ($room) {
-        my $opponent_id = $room->{p1_id} == $player_id ? $room->{p2_id} : $room->{p1_id};
+        my $opponent_id = $room->{p1_id} == $player_id
+            ? $room->{p2_id}
+            : $room->{p1_id};
+        my $is_p1 = $room->{p1_id} == $player_id ? \1 : \0;
         return $c->render(json => {
             status      => 'match_found',
             room_id     => $room->{room_id},
             opponent_id => $opponent_id,
+            is_p1       => $is_p1,
             ws_url      => "$SERVER_URL/game/$room->{room_id}",
         });
     }
 
-    # Buscar oponente en la cola
+    # ── ¿Hay alguien esperando? ────────────────────────────
     my $opponent = $db->selectrow_hashref(
-        "SELECT player_id FROM queue WHERE player_id != ? ORDER BY joined_at ASC LIMIT 1",
+        "SELECT player_id FROM queue
+         WHERE player_id != ?
+         ORDER BY joined_at ASC LIMIT 1",
         undef, $player_id
     );
 
     if ($opponent) {
         my $opponent_id = $opponent->{player_id};
-        my $p1_id       = $opponent_id;  # El que esperó más es P1
+        my $p1_id       = $opponent_id;   # el que esperó más es P1
         my $p2_id       = $player_id;
         my $room_id     = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
 
         $db->do(
-            "INSERT INTO rooms (room_id, p1_id, p2_id, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO rooms (room_id, p1_id, p2_id, created_at)
+             VALUES (?, ?, ?, ?)",
             undef, $room_id, $p1_id, $p2_id, time()
         );
-        $db->do("DELETE FROM queue WHERE player_id IN (?, ?)", undef, $player_id, $opponent_id);
+        $db->do(
+            "DELETE FROM queue WHERE player_id IN (?, ?)",
+            undef, $player_id, $opponent_id
+        );
 
+        # Este jugador es P2 (llegó después)
         return $c->render(json => {
             status      => 'match_found',
             room_id     => $room_id,
             opponent_id => $opponent_id,
+            is_p1       => \0,
             ws_url      => "$SERVER_URL/game/$room_id",
         });
     }
 
-    # No hay oponente — agregar a la cola
+    # ── Nadie esperando — entrar a la cola ─────────────────
     $db->do(
-        "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO queue (player_id, username, joined_at)
+         VALUES (?, ?, ?)",
         undef, $player_id, $auth->{username}, time()
     );
 

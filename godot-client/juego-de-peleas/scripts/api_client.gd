@@ -5,9 +5,9 @@ extends Node
 
 const BASE_URL = "https://ripjaw-production-2299.up.railway.app"
 
-var token: String = ""
-var local_player_id: int = 0
-var local_username: String = ""
+var token:            String = ""
+var local_player_id:  int    = 0
+var local_username:   String = ""
 
 signal login_success(data)
 signal login_error(msg)
@@ -29,9 +29,11 @@ func _restore_session():
 	http.request_completed.connect(func(result, code, _headers, body):
 		http.queue_free()
 		if code == 200:
-			var data = _http_parse(body)
+			var data        = _http_parse(body)
 			local_player_id = data.get("id", 0)
 			local_username  = data.get("username", "")
+			# ── Sincronizar con GameData ──
+			GameData.is_online = false
 			print("Sesión restaurada: ", local_username, " id:", local_player_id)
 		else:
 			token           = ""
@@ -48,8 +50,7 @@ func _http_post(endpoint: String, body: Dictionary, auth: bool = false) -> HTTPR
 	var headers = ["Content-Type: application/json"]
 	if auth and token != "":
 		headers.append("Authorization: Bearer " + token)
-	var json_body = JSON.stringify(body)
-	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_POST, json_body)
+	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 	return http
 
 
@@ -70,13 +71,12 @@ func _http_delete(endpoint: String, body: Dictionary = {}) -> HTTPRequest:
 		"Content-Type: application/json",
 		"Authorization: Bearer " + token
 	]
-	var json_body = JSON.stringify(body)
-	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_DELETE, json_body)
+	http.request(BASE_URL + endpoint, headers, HTTPClient.METHOD_DELETE, JSON.stringify(body))
 	return http
 
 
 func _http_parse(body: PackedByteArray) -> Dictionary:
-	var text = body.get_string_from_utf8()
+	var text   = body.get_string_from_utf8()
 	var result = JSON.parse_string(text)
 	if result is Dictionary:
 		return result
@@ -98,6 +98,7 @@ func register(username: String, email: String, password: String):
 			_save_token(data.get("token", ""))
 			local_player_id = data.get("player_id", 0)
 			local_username  = data.get("username", "")
+			GameData.is_online = false
 			register_success.emit(data)
 		else:
 			register_error.emit(data.get("error", "Error desconocido"))
@@ -116,6 +117,7 @@ func login(username: String, password: String):
 			_save_token(data.get("token", ""))
 			local_player_id = data.get("player_id", 0)
 			local_username  = data.get("username", "")
+			GameData.is_online = false
 			login_success.emit(data)
 		else:
 			login_error.emit(data.get("error", "Credenciales incorrectas"))

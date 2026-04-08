@@ -1,40 +1,35 @@
+# ============================================================
+#   RipJaw — game_manager.gd
+# ============================================================
 extends Node
-
-var room_id: String  = ""
-var ws_url: String   = ""
-var opponent_id: int = 0
 
 var player1 = null
 var player2 = null
 
-@onready var p1_damage: Label     = $HUD/P1Damage
-@onready var p2_damage: Label     = $HUD/P2Damage
-@onready var timer_label: Label   = $HUD/Timer
+@onready var p1_damage:    Label = $HUD/P1Damage
+@onready var p2_damage:    Label = $HUD/P2Damage
+@onready var timer_label:  Label = $HUD/Timer
 @onready var victory_label: Label = $HUD/VictoryLabel
-@onready var p1_stocks: Label     = $HUD/P1Stocks
-@onready var p2_stocks: Label     = $HUD/P2Stocks
+@onready var p1_stocks:    Label = $HUD/P1Stocks
+@onready var p2_stocks:    Label = $HUD/P2Stocks
 
-var game_time: float   = 180.0
-var time_left: float   = 180.0
-var game_running: bool = false
-var game_ended: bool   = false
+var game_time:    float = 180.0
+var time_left:    float = 180.0
+var game_running: bool  = false
+var game_ended:   bool  = false
 
-var local_fighter
-var remote_fighter
+var local_fighter  = null
+var remote_fighter = null
 
 
 func _ready():
 	if victory_label:
 		victory_label.hide()
 
-	room_id     = GameData.room_id
-	ws_url      = GameData.ws_url
-	opponent_id = GameData.opponent_id
-
 	_spawn_players()
 
-	if room_id == "":
-		# ── Modo local ──────────────────────────────────────
+	if not GameData.is_online:
+		# ── Modo local / bot ────────────────────────────────
 		player1.setup(1, true)
 		if GameData.vs_bot:
 			player2.setup(2, false)
@@ -45,18 +40,15 @@ func _ready():
 		game_running   = true
 	else:
 		# ── Modo online ─────────────────────────────────────
-		var parts   = room_id.split("_")
-		var room_p1 = int(parts[0]) if parts.size() >= 2 else 0
-
-		if ApiClient.local_player_id == room_p1:
-			# Soy P1
+		# GameData.is_host = true  →  soy P1
+		# GameData.is_host = false →  soy P2
+		if GameData.is_host:
 			player1.setup(ApiClient.local_player_id, true)
-			player2.setup(opponent_id, false)
+			player2.setup(GameData.opponent_id,      false)
 			local_fighter  = player1
 			remote_fighter = player2
 		else:
-			# Soy P2
-			player1.setup(opponent_id, false)
+			player1.setup(GameData.opponent_id,      false)
 			player2.setup(ApiClient.local_player_id, true)
 			local_fighter  = player2
 			remote_fighter = player1
@@ -70,33 +62,33 @@ func _ready():
 	player2.took_damage.connect(_on_damage_updated)
 	player2.died.connect(_on_player_died)
 
-	# Conectar WebSocket si hay sala online
-	var ws = get_node_or_null("/root/WebSocketClient")
-	if ws and ws_url != "":
-		ws.game_started.connect(_on_game_started)
-		ws.game_state_received.connect(_on_game_state)
-		ws.game_over.connect(_on_game_over)
-		await ws.connect_to_room(ws_url, room_id)
-		# Iniciar juego inmediatamente al conectar
-		game_running = true
-	
+	# WebSocket
+	if GameData.is_online:
+		var ws = get_node_or_null("/root/WebSocketClient")
+		if ws:
+			ws.game_started.connect(_on_game_started)
+			ws.game_state_received.connect(_on_game_state)
+			ws.game_over.connect(_on_game_over)
+			# Si el WS ya está conectado (desde character_select) no volver a conectar
+			if not ws.is_connected_to_room:
+				await ws.connect_to_room(GameData.ws_url, GameData.room_id)
+			game_running = true
+
 
 func _spawn_players():
-	var p1_scene_path = GameData.p1_scene
-	if p1_scene_path == "" or not ResourceLoader.exists(p1_scene_path):
-		p1_scene_path = "res://scenes/player_deku.tscn"
-	var p1_scene = load(p1_scene_path)
-	player1 = p1_scene.instantiate()
+	var p1_path = GameData.p1_scene
+	if p1_path == "" or not ResourceLoader.exists(p1_path):
+		p1_path = "res://scenes/player_deku.tscn"
+	player1 = load(p1_path).instantiate()
 	player1.position = Vector2(300, 150)
 	add_child(player1)
 
-	var p2_scene_path = GameData.p2_scene
+	var p2_path = GameData.p2_scene
 	if GameData.vs_bot:
-		p2_scene_path = "res://scenes/player_baki.tscn"
-	if p2_scene_path == "" or not ResourceLoader.exists(p2_scene_path):
-		p2_scene_path = "res://scenes/player_deku.tscn"
-	var p2_scene = load(p2_scene_path)
-	player2 = p2_scene.instantiate()
+		p2_path = "res://scenes/player_baki.tscn"
+	if p2_path == "" or not ResourceLoader.exists(p2_path):
+		p2_path = "res://scenes/player_deku.tscn"
+	player2 = load(p2_path).instantiate()
 	player2.position = Vector2(900, 150)
 	add_child(player2)
 
@@ -107,27 +99,29 @@ func _spawn_players():
 func _process(delta):
 	if not game_running:
 		return
+
 	time_left -= delta
 	if timer_label:
 		timer_label.text = "%d:%02d" % [int(time_left) / 60, int(time_left) % 60]
 	if time_left <= 0:
 		_end_game()
 
-	# Enviar input del jugador local al servidor
-	var ws = get_node_or_null("/root/WebSocketClient")
-	if ws and ws.is_connected_to_room and local_fighter:
-		var dir = 0.0
-		if local_fighter.is_local_player:
-			dir = Input.get_axis(
-				local_fighter._actions.get("left", "p1_left"),
-				local_fighter._actions.get("right", "p1_right")
+	# Enviar input local al oponente
+	if GameData.is_online:
+		var ws = get_node_or_null("/root/WebSocketClient")
+		if ws and ws.is_connected_to_room and local_fighter:
+			var actions = local_fighter._actions if local_fighter.has_method("_get_actions") \
+						  else { "left": "p1_left", "right": "p1_right",
+								 "attack": "p1_attack", "jump": "p1_jump" }
+			var dir = Input.get_axis(
+				actions.get("left",  "p1_left"),
+				actions.get("right", "p1_right")
 			)
-		ws.send_input(
-			dir,
-			0.0,
-			Input.is_action_pressed(local_fighter._actions.get("attack", "p1_attack")),
-			Input.is_action_just_pressed(local_fighter._actions.get("jump", "p1_jump"))
-		)
+			ws.send_input(
+				dir, 0.0,
+				Input.is_action_pressed(actions.get("attack", "p1_attack")),
+				Input.is_action_just_pressed(actions.get("jump", "p1_jump"))
+			)
 
 
 func _on_game_started():
@@ -135,6 +129,10 @@ func _on_game_started():
 
 
 func _on_game_state(data: Dictionary):
+	# Ignorar mensajes de selección de personaje
+	var t = data.get("type", "")
+	if t == "char_cursor" or t == "char_ready":
+		return
 	if remote_fighter:
 		remote_fighter.apply_remote_state(data)
 
@@ -145,11 +143,9 @@ func _on_game_over(_winner: String):
 
 func _on_damage_updated(pid: int, percent: float):
 	if pid == player1.player_id:
-		if p1_damage:
-			p1_damage.text = "P1: %.0f%%" % percent
+		if p1_damage: p1_damage.text = "P1: %.0f%%" % percent
 	else:
-		if p2_damage:
-			p2_damage.text = "P2: %.0f%%" % percent
+		if p2_damage: p2_damage.text = "P2: %.0f%%" % percent
 	_update_stocks_display()
 
 
@@ -163,10 +159,8 @@ func _on_player_died(_pid: int):
 
 
 func _update_stocks_display():
-	if p1_stocks:
-		p1_stocks.text = "❤️".repeat(max(0, player1.stocks))
-	if p2_stocks:
-		p2_stocks.text = "❤️".repeat(max(0, player2.stocks))
+	if p1_stocks: p1_stocks.text = "❤️".repeat(max(0, player1.stocks))
+	if p2_stocks: p2_stocks.text = "❤️".repeat(max(0, player2.stocks))
 
 
 func _end_game():
@@ -176,7 +170,7 @@ func _end_game():
 	game_running = false
 
 	var local_won: bool = false
-	if local_fighter != null and remote_fighter != null:
+	if local_fighter and remote_fighter:
 		if local_fighter.stocks > remote_fighter.stocks:
 			local_won = true
 		elif local_fighter.stocks == remote_fighter.stocks:
@@ -190,14 +184,18 @@ func _end_game():
 
 
 func _report_and_exit(local_won: bool):
-	var winner_id = ApiClient.local_player_id if local_won else opponent_id
-	var loser_id  = opponent_id if local_won else ApiClient.local_player_id
+	var winner_id = ApiClient.local_player_id if local_won else GameData.opponent_id
+	var loser_id  = GameData.opponent_id if local_won else ApiClient.local_player_id
 
-	if room_id != "":
-		ApiClient.report_result(room_id, winner_id, loser_id)
+	if GameData.is_online and GameData.room_id != "":
+		ApiClient.report_result(GameData.room_id, winner_id, loser_id)
 		await ApiClient.result_saved
-		# Limpiar room para que no se reutilice en la próxima búsqueda
-		ApiClient.cleanup_room(room_id)
+		ApiClient.cleanup_room(GameData.room_id)
+		# Limpiar estado online para la próxima partida
+		GameData.room_id   = ""
+		GameData.ws_url    = ""
+		GameData.is_online = false
+		GameData.is_host   = false
 
 	await get_tree().create_timer(3.0).timeout
 
