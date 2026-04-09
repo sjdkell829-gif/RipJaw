@@ -39,6 +39,7 @@ func _process(_delta):
 
 func connect_to_room(ws_url: String, room_id: String):
 	_room_id = room_id
+	print("=== WS conectando a: ", ws_url)
 	var err = _socket.connect_to_url(ws_url)
 	if err != OK:
 		push_error("[WS] No se pudo conectar: " + str(err))
@@ -47,10 +48,8 @@ func connect_to_room(ws_url: String, room_id: String):
 	await _wait_for_open()
 	_connected = true
 	connected.emit()
-	# Emitir game_started al conectar sin esperar al servidor
-	# Esto evita que el juego tarde 3 segundos en iniciar
 	game_started.emit()
-	print("[WS] Conectado al room: ", room_id)
+	print("=== WS conectado OK al room: ", room_id)
 
 
 func disconnect_from_room():

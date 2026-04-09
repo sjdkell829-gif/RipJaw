@@ -206,9 +206,13 @@ func _on_start_local():
 # ── Online ─────────────────────────────────────────────────
 
 func _on_search_online():
+	print("=== TOKEN: ", ApiClient.token)
+	print("=== PLAYER ID: ", ApiClient.local_player_id)
+	
 	if ApiClient.token == "":
 		status_label.text = "⚠ Debes iniciar sesión primero."
 		return
+	# ... resto del código
 
 	GameData.stocks    = _stocks
 	GameData.vs_bot    = false

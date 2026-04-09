@@ -15,22 +15,24 @@ var p2_cursor: int  = 1
 var p1_ready:  bool = false
 var p2_ready:  bool = false
 
-var char_cards:       Array = []
-var p1_indicator:     Label
-var p2_indicator:     Label
-var p1_status:        Label
-var p2_status:        Label
-var countdown_label:  Label
-var _countdown:       float = -1.0
+var char_cards:      Array = []
+var p1_indicator:    Label
+var p2_indicator:    Label
+var p1_status:       Label
+var p2_status:       Label
+var countdown_label: Label
+var _countdown:      float = -1.0
 
-# Online
-var _is_online:       bool = false
-var _opponent_ready:  bool = false
+var _is_online: bool = false
 
 
 func _ready():
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
+	print("===CHARACTER SELECT===")
+	print("is_online:", GameData.is_online)
+	print("room:", GameData.room_id)
+	
+	
 	for res in ["res://assets/stats_deku.tres",
 				"res://assets/stats_baki.tres",
 				"res://assets/stats_richtofen.tres"]:
@@ -44,16 +46,40 @@ func _ready():
 		p1_cursor = 0
 		p2_cursor = min(1, characters.size() - 1)
 
-	_is_online = GameData.is_online
+	_is_online = GameData.is_online and ApiClient.local_player_id != 0
 
-	# Escuchar mensajes del oponente si es online
-	if _is_online:
-		var ws = get_node_or_null("/root/WebSocketClient")
-		if ws:
-			ws.game_state_received.connect(_on_ws_message)
+	if not _is_online and GameData.is_online:
+		push_error("Intento de partida online sin sesión activa")
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		return
 
 	_build_ui()
 	_update_cursors()
+
+	if _is_online:
+		set_process(false)
+		call_deferred("_connect_ws")
+
+
+func _connect_ws():
+	var ws = get_node_or_null("/root/WebSocketClient")
+	if not ws:
+		push_error("=== WebSocketClient no encontrado")
+		set_process(true)
+		return
+
+	ws.game_state_received.connect(_on_ws_message)
+
+	if ws.is_connected_to_room:
+		print("=== WS ya estaba conectado")
+		set_process(true)
+		return
+
+	print("=== WS conectando a: ", GameData.ws_url)
+	await ws.connect_to_room(GameData.ws_url, GameData.room_id)
+	print("=== WS conectado, is_connected: ", ws.is_connected_to_room)
+
+	set_process(true)
 
 
 # ── UI ─────────────────────────────────────────────────────
@@ -95,7 +121,7 @@ func _build_ui():
 
 	var hint = Label.new()
 	if _is_online:
-		hint.text = "P1: A/D mover  F confirmar  W cancelar"
+		hint.text = "A/D mover   F confirmar   W cancelar"
 	else:
 		hint.text = "P1: A/D mover  F confirmar  W cancelar  |  P2: ←/→ mover  Enter confirmar  ↑ cancelar"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -185,7 +211,7 @@ func _process(delta):
 
 
 func _handle_input():
-	# ── P1 (siempre local) ─────────────────────────────────
+	# ── P1 siempre local ───────────────────────────────────
 	if not p1_ready:
 		if Input.is_action_just_pressed("p1_left"):
 			p1_cursor = (p1_cursor - 1 + characters.size()) % characters.size()
@@ -231,46 +257,53 @@ func _handle_input():
 			_update_cursors()
 
 
-# ── WebSocket online ───────────────────────────────────────
+# ── WebSocket ──────────────────────────────────────────────
 
 func _broadcast_cursor():
 	if not _is_online:
 		return
 	var ws = get_node_or_null("/root/WebSocketClient")
-	if ws:
+	if ws and ws.is_connected_to_room:
+		print("=== ENVIANDO cursor: ", p1_cursor)
 		ws._socket.send_text(JSON.stringify({
-			"type":         "char_cursor",
-			"char_index":   p1_cursor
+			"type":       "char_cursor",
+			"char_index": p1_cursor
 		}))
+	else:
+		print("=== WS NO CONECTADO al intentar enviar cursor")
 
 
 func _broadcast_ready():
 	if not _is_online:
 		return
 	var ws = get_node_or_null("/root/WebSocketClient")
-	if ws:
+	if ws and ws.is_connected_to_room:
+		print("=== ENVIANDO ready: ", p1_cursor)
 		ws._socket.send_text(JSON.stringify({
-			"type":         "char_ready",
-			"char_index":   p1_cursor
+			"type":       "char_ready",
+			"char_index": p1_cursor
 		}))
+	else:
+		print("=== WS NO CONECTADO al intentar enviar ready")
 
 
 func _on_ws_message(data: Dictionary):
+	print("=== MENSAJE WS RECIBIDO: ", data)
 	match data.get("type", ""):
 		"char_cursor":
-			var idx = int(data.get("char_index", 0))
+			var idx   = int(data.get("char_index", 0))
 			p2_cursor = clamp(idx, 0, characters.size() - 1)
 			_update_cursors()
 		"char_ready":
-			var idx = int(data.get("char_index", 0))
-			p2_cursor  = clamp(idx, 0, characters.size() - 1)
-			p2_ready   = true
+			var idx   = int(data.get("char_index", 0))
+			p2_cursor = clamp(idx, 0, characters.size() - 1)
+			p2_ready  = true
 			GameData.opponent_char_index = p2_cursor
 			_update_cursors()
 			_check_both_ready()
 
 
-# ── Cursores / display ─────────────────────────────────────
+# ── Display ────────────────────────────────────────────────
 
 func _update_cursors():
 	for i in char_cards.size():
@@ -320,22 +353,16 @@ func _check_both_ready():
 		countdown_label.show()
 
 
+# ── Iniciar ────────────────────────────────────────────────
+
 func _start_game():
 	countdown_label.hide()
 
-	# ── Stats P1 (siempre local) ───────────────────────────
 	GameData.p1_stats = characters[p1_cursor]
 	GameData.p1_scene = character_scenes[p1_cursor] if p1_cursor < character_scenes.size() else character_scenes[0]
 
-	# ── Stats P2 ───────────────────────────────────────────
-	var p2_idx = p2_cursor if not _is_online else GameData.opponent_char_index
+	var p2_idx        = GameData.opponent_char_index if _is_online else p2_cursor
 	GameData.p2_stats = characters[p2_idx]
 	GameData.p2_scene = character_scenes[p2_idx] if p2_idx < character_scenes.size() else character_scenes[0]
-
-	# ── Conectar WS justo antes de entrar al juego ─────────
-	if _is_online:
-		var ws = get_node_or_null("/root/WebSocketClient")
-		if ws and not ws.is_connected_to_room:
-			ws.connect_to_room(GameData.ws_url, GameData.room_id)
 
 	get_tree().change_scene_to_file("res://scenes/game.tscn")
