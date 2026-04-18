@@ -8,7 +8,7 @@
 
 config_version=5
 
-user_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF5ZXJfaWQiOjcsInVzZXJuYW1lIjoieGQifQ.lTswqfnpnC0djEjhoFgsq4kJOd5JDfyXVVrQryS3b-s"
+user_token=""
 
 [application]
 
@@ -20,7 +20,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 ApiClient="*uid://ng5638o5yqh5"
-WebsocketClient="*uid://cs18q0w703gp0"
+WebSocketClient="*uid://cs18q0w703gp0"
 GameData="*uid://buo2w2tv67vdp"
 
 [input]

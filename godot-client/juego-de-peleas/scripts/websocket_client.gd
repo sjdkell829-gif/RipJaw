@@ -1,7 +1,6 @@
 # ============================================================
-#   SmashAPI — websocket_client.gd
+#   SmashAPI — WebSocket_Client.gd
 #   Sincronización en tiempo real con el servidor
-#   Agregar como AutoLoad en Project > Project Settings > AutoLoad
 # ============================================================
 extends Node
 
@@ -20,17 +19,19 @@ var is_connected_to_room: bool:
 
 
 func _process(_delta):
-	if _socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+	var state = _socket.get_ready_state()
+
+	if state == WebSocketPeer.STATE_OPEN:
 		_socket.poll()
 		while _socket.get_available_packet_count() > 0:
 			var raw  = _socket.get_packet()
 			var text = raw.get_string_from_utf8()
 			_handle_message(text)
 
-	elif _socket.get_ready_state() == WebSocketPeer.STATE_CONNECTING:
+	elif state == WebSocketPeer.STATE_CONNECTING:
 		_socket.poll()
 
-	elif _connected and _socket.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+	elif _connected and state == WebSocketPeer.STATE_CLOSED:
 		_connected = false
 		disconnected.emit()
 
@@ -38,6 +39,13 @@ func _process(_delta):
 # ── Conexión ───────────────────────────────────────────────
 
 func connect_to_room(ws_url: String, room_id: String):
+	# Si ya está conectado o conectando, ignorar llamada duplicada
+	var state = _socket.get_ready_state()
+	if state == WebSocketPeer.STATE_OPEN or state == WebSocketPeer.STATE_CONNECTING:
+		print("[WS] Ya conectado/conectando, ignorando llamada duplicada")
+		_connected = true
+		return
+
 	_room_id = room_id
 	print("=== WS conectando a: ", ws_url)
 	var err = _socket.connect_to_url(ws_url)
@@ -59,7 +67,7 @@ func disconnect_from_room():
 
 # ── Enviar mensajes ────────────────────────────────────────
 
-func send_input(x: float, y: float, attacking: bool, jumping: bool):
+func send_input(x: float, y: float, attacking: bool, jumping: bool, pos: Vector2, vel: Vector2):
 	if not _connected:
 		return
 	var msg = JSON.stringify({
@@ -67,7 +75,11 @@ func send_input(x: float, y: float, attacking: bool, jumping: bool):
 		"x":         x,
 		"y":         y,
 		"attacking": attacking,
-		"jumping":   jumping
+		"jumping":   jumping,
+		"px":        pos.x,
+		"py":        pos.y,
+		"vx":        vel.x,
+		"vy":        vel.y
 	})
 	_socket.send_text(msg)
 
@@ -90,6 +102,8 @@ func _handle_message(text: String):
 	if not data is Dictionary:
 		return
 
+	print("[WS] Mensaje recibido: ", data)
+
 	match data.get("type", ""):
 		"game_start":
 			game_started.emit()
@@ -99,6 +113,9 @@ func _handle_message(text: String):
 			game_state_received.emit(data)
 		"game_over":
 			game_over.emit(data.get("winner", ""))
+		_:
+			# char_cursor, char_ready y cualquier otro tipo
+			game_state_received.emit(data)
 
 
 # ── Utilidad interna ───────────────────────────────────────

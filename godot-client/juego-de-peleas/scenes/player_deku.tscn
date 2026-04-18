@@ -18,6 +18,14 @@ _data = {
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_gee14"]
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_s4tnj"]
+atlas = ExtResource("3_txbej")
+region = Rect2(462, 268, 154, 134)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_6h8bx"]
+atlas = ExtResource("3_txbej")
+region = Rect2(154, 268, 154, 134)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_gee14"]
 atlas = ExtResource("3_txbej")
 region = Rect2(0, 0, 154, 134)
@@ -48,7 +56,13 @@ region = Rect2(462, 134, 154, 134)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_s4tnj"]
 animations = [{
-"frames": [],
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_s4tnj")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_6h8bx")
+}],
 "loop": false,
 "name": &"attack",
 "speed": 10.0

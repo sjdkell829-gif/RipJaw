@@ -45,7 +45,7 @@ func _on_body_entered(body):
 func _explode():
 	# Flash verde al impactar
 	var flash      = ColorRect.new()
-	flash.color    = Color(0.0, 1.0, 0.3, 0.7)
+	flash.color    = Color(0.0, 1.0, 0.302, 0.494)
 	flash.size     = Vector2(40, 40)
 	flash.position = Vector2(-20, -20)
 	get_parent().add_child(flash)

@@ -1,13 +1,13 @@
 extends Control
 
 var login_panel: Panel
-var main_panel: Panel
+var main_panel:  Panel
 
 var username_input: LineEdit
 var password_input: LineEdit
-var login_error: Label
-var welcome_label: Label
-var elo_label: Label
+var login_error:    Label
+var welcome_label:  Label
+var elo_label:      Label
 
 
 func _ready():
@@ -23,6 +23,10 @@ func _ready():
 		welcome_label.text = "¡Hola, %s!" % ApiClient.local_username
 		elo_label.text     = "ELO: ..."
 		_load_elo()
+	elif GameData.is_guest:
+		_show_panel(main_panel)
+		welcome_label.text = "¡Hola, %s!" % GameData.guest_id
+		elo_label.text     = "Modo invitado"
 
 
 func _build_ui():
@@ -52,11 +56,12 @@ func _build_login_panel():
 	title.add_theme_font_size_override("font_size", 36)
 	vbox.add_child(title)
 
+	# ── Jugar sin cuenta ───────────────────────────────────
 	var quick_btn = Button.new()
 	quick_btn.text = "🎮 Jugar sin cuenta"
 	quick_btn.custom_minimum_size = Vector2(400, 55)
 	quick_btn.add_theme_font_size_override("font_size", 18)
-	quick_btn.pressed.connect(_on_quick_play_pressed)
+	quick_btn.pressed.connect(_on_guest_play_pressed)
 	vbox.add_child(quick_btn)
 
 	vbox.add_child(HSeparator.new())
@@ -124,19 +129,19 @@ func _build_main_panel():
 	elo_label.add_theme_font_size_override("font_size", 20)
 	vbox.add_child(elo_label)
 
-	var local_btn = Button.new()
-	local_btn.text = "🎮 Jugar local"
-	local_btn.custom_minimum_size = Vector2(400, 55)
-	local_btn.add_theme_font_size_override("font_size", 18)
-	local_btn.pressed.connect(_on_quick_play_pressed)
-	vbox.add_child(local_btn)
-
 	var fight_btn = Button.new()
 	fight_btn.text = "⚔ Pelear online"
 	fight_btn.custom_minimum_size = Vector2(400, 55)
 	fight_btn.add_theme_font_size_override("font_size", 18)
 	fight_btn.pressed.connect(_on_fight_pressed)
 	vbox.add_child(fight_btn)
+
+	var local_btn = Button.new()
+	local_btn.text = "🎮 Jugar local"
+	local_btn.custom_minimum_size = Vector2(400, 55)
+	local_btn.add_theme_font_size_override("font_size", 18)
+	local_btn.pressed.connect(_on_local_play_pressed)
+	vbox.add_child(local_btn)
 
 	var ranking_btn = Button.new()
 	ranking_btn.text = "🏆 Ranking"
@@ -167,14 +172,35 @@ func _load_elo():
 	)
 
 
-func _on_quick_play_pressed():
+# ── Guest ──────────────────────────────────────────────────
+func _on_guest_play_pressed():
+	# Generar ID temporal si no tiene uno ya
+	if GameData.guest_id == "":
+		GameData.guest_id = "Guest_%d" % (randi() % 9000 + 1000)
+	GameData.is_guest    = true
+	GameData.p1_username = GameData.guest_id
+	_show_panel(main_panel)
+	welcome_label.text = "¡Hola, %s!" % GameData.guest_id
+	elo_label.text     = "Modo invitado"
+
+
+# ── Local ──────────────────────────────────────────────────
+func _on_local_play_pressed():
+	GameData.is_online   = false
 	GameData.room_id     = ""
 	GameData.ws_url      = ""
 	GameData.opponent_id = 0
 	get_tree().change_scene_to_file("res://scenes/match_config.tscn")
 
 
+# ── Online ─────────────────────────────────────────────────
 func _on_fight_pressed():
+	if GameData.is_guest:
+		# Guest puede jugar online con ID temporal
+		GameData.p1_username = GameData.guest_id
+	else:
+		GameData.p1_username = ApiClient.local_username
+	GameData.is_online   = false
 	GameData.room_id     = ""
 	GameData.ws_url      = ""
 	GameData.opponent_id = 0
@@ -193,8 +219,11 @@ func _on_register_pressed():
 
 
 func _on_login_success(data: Dictionary):
-	welcome_label.text = "¡Hola, %s!" % data.get("username", "")
-	elo_label.text     = "ELO: %d" % data.get("elo", 1000)
+	GameData.is_guest    = false
+	GameData.guest_id    = ""
+	GameData.p1_username = data.get("username", "")
+	welcome_label.text   = "¡Hola, %s!" % data.get("username", "")
+	elo_label.text       = "ELO: %d" % data.get("elo", 1000)
 	_show_panel(main_panel)
 
 
@@ -206,6 +235,9 @@ func _on_logout_pressed():
 	ApiClient.token           = ""
 	ApiClient.local_player_id = 0
 	ApiClient.local_username  = ""
+	GameData.is_guest         = false
+	GameData.guest_id         = ""
+	GameData.p1_username      = ""
 	ProjectSettings.set_setting("user_token", "")
 	ProjectSettings.save()
 	_show_panel(login_panel)

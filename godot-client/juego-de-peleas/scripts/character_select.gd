@@ -358,11 +358,25 @@ func _check_both_ready():
 func _start_game():
 	countdown_label.hide()
 
-	GameData.p1_stats = characters[p1_cursor]
-	GameData.p1_scene = character_scenes[p1_cursor] if p1_cursor < character_scenes.size() else character_scenes[0]
+	var my_idx       = p1_cursor
+	var opponent_idx = GameData.opponent_char_index
 
-	var p2_idx        = GameData.opponent_char_index if _is_online else p2_cursor
-	GameData.p2_stats = characters[p2_idx]
-	GameData.p2_scene = character_scenes[p2_idx] if p2_idx < character_scenes.size() else character_scenes[0]
+	if not _is_online:
+		GameData.p1_stats = characters[p1_cursor]
+		GameData.p1_scene = character_scenes[p1_cursor] if p1_cursor < character_scenes.size() else character_scenes[0]
+		GameData.p2_stats = characters[p2_cursor]
+		GameData.p2_scene = character_scenes[p2_cursor] if p2_cursor < character_scenes.size() else character_scenes[0]
+	elif GameData.is_host:
+		# Soy P1: mis stats → p1, oponente → p2
+		GameData.p1_stats = characters[my_idx]
+		GameData.p1_scene = character_scenes[my_idx] if my_idx < character_scenes.size() else character_scenes[0]
+		GameData.p2_stats = characters[opponent_idx]
+		GameData.p2_scene = character_scenes[opponent_idx] if opponent_idx < character_scenes.size() else character_scenes[0]
+	else:
+		# Soy P2: oponente → p1, mis stats → p2
+		GameData.p1_stats = characters[opponent_idx]
+		GameData.p1_scene = character_scenes[opponent_idx] if opponent_idx < character_scenes.size() else character_scenes[0]
+		GameData.p2_stats = characters[my_idx]
+		GameData.p2_scene = character_scenes[my_idx] if my_idx < character_scenes.size() else character_scenes[0]
 
 	get_tree().change_scene_to_file("res://scenes/game.tscn")

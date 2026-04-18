@@ -38,13 +38,11 @@ func _process(delta):
 
 
 func _build_ui():
-	# Fondo
 	var bg = ColorRect.new()
 	bg.color = Color(0.08, 0.08, 0.12)
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	# Panel central
 	var panel = PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(420, 480)
@@ -67,7 +65,6 @@ func _build_ui():
 	inner.add_theme_constant_override("separation", 24)
 	margin.add_child(inner)
 
-	# Título
 	var title = Label.new()
 	title.text = "⚔ Configuración de Partida"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -76,7 +73,6 @@ func _build_ui():
 
 	inner.add_child(HSeparator.new())
 
-	# ── Vidas ──────────────────────────────────────────────
 	var stocks_label = Label.new()
 	stocks_label.text = "Número de vidas (1-9):"
 	stocks_label.add_theme_font_size_override("font_size", 16)
@@ -111,7 +107,6 @@ func _build_ui():
 
 	inner.add_child(HSeparator.new())
 
-	# ── Bot ────────────────────────────────────────────────
 	var bot_row = HBoxContainer.new()
 	bot_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	bot_row.add_theme_constant_override("separation", 16)
@@ -129,7 +124,6 @@ func _build_ui():
 
 	inner.add_child(HSeparator.new())
 
-	# ── Botón local ────────────────────────────────────────
 	var start_btn = Button.new()
 	start_btn.text = "¡A pelear! ⚔  (local)"
 	start_btn.custom_minimum_size = Vector2(340, 55)
@@ -137,7 +131,6 @@ func _build_ui():
 	start_btn.pressed.connect(_on_start_local)
 	inner.add_child(start_btn)
 
-	# ── Botón online ───────────────────────────────────────
 	online_btn = Button.new()
 	online_btn.text = "🌐  Buscar partida online"
 	online_btn.custom_minimum_size = Vector2(340, 55)
@@ -145,7 +138,6 @@ func _build_ui():
 	online_btn.pressed.connect(_on_search_online)
 	inner.add_child(online_btn)
 
-	# ── Estado de búsqueda ─────────────────────────────────
 	status_label = Label.new()
 	status_label.text = ""
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -160,7 +152,6 @@ func _build_ui():
 	cancel_btn.visible = false
 	inner.add_child(cancel_btn)
 
-	# ── Volver ─────────────────────────────────────────────
 	var back_btn = Button.new()
 	back_btn.text = "← Volver"
 	back_btn.custom_minimum_size = Vector2(340, 40)
@@ -170,8 +161,6 @@ func _build_ui():
 
 	_update_display()
 
-
-# ── Controles de vidas ─────────────────────────────────────
 
 func _update_display():
 	stocks_value.text  = str(_stocks)
@@ -194,8 +183,6 @@ func _on_bot_toggled(pressed: bool):
 	GameData.vs_bot = pressed
 
 
-# ── Local ──────────────────────────────────────────────────
-
 func _on_start_local():
 	GameData.stocks    = _stocks
 	GameData.vs_bot    = _vs_bot
@@ -203,23 +190,17 @@ func _on_start_local():
 	get_tree().change_scene_to_file("res://scenes/character_select.tscn")
 
 
-# ── Online ─────────────────────────────────────────────────
-
 func _on_search_online():
-	print("=== TOKEN: ", ApiClient.token)
-	print("=== PLAYER ID: ", ApiClient.local_player_id)
-	
 	if ApiClient.token == "":
 		status_label.text = "⚠ Debes iniciar sesión primero."
 		return
-	# ... resto del código
 
 	GameData.stocks    = _stocks
 	GameData.vs_bot    = false
 	GameData.is_online = true
 
 	_searching          = true
-	_poll_timer         = POLL_INTERVAL   # dispara en el primer frame
+	_poll_timer         = POLL_INTERVAL
 	online_btn.disabled = true
 	cancel_btn.visible  = true
 	status_label.text   = "🔍 Buscando oponente..."
@@ -243,10 +224,12 @@ func _poll_matchmaking():
 		"Authorization: Bearer " + ApiClient.token,
 		"Content-Type: application/json"
 	]
+	# ← URL actualizada a Render
 	http.request(
-		"https://ripjaw-production-2299.up.railway.app/api/matchmaking/queue",
+		"https://ripjaw.onrender.com/api/matchmaking/queue",
 		headers,
-		HTTPClient.METHOD_POST
+		HTTPClient.METHOD_POST,
+		JSON.stringify({ "stocks": _stocks })
 	)
 
 
@@ -265,27 +248,23 @@ func _on_poll_response(_result, response_code, _headers, body, http: HTTPRequest
 		return
 
 	match json.get("status", ""):
-
 		"waiting":
 			status_label.text = "🔍 Buscando oponente..."
-
 		"match_found":
 			_searching          = false
 			cancel_btn.visible  = false
 			online_btn.disabled = false
 			status_label.text   = "✅ ¡Oponente encontrado!"
 
-			GameData.room_id     = json.get("room_id",     "")
-			GameData.ws_url      = json.get("ws_url",      "")
-			GameData.opponent_id = json.get("opponent_id", 0)
+			GameData.opponent_username = json.get("opponent_username", "Oponente")
+			GameData.room_id           = json.get("room_id",     "")
+			GameData.ws_url            = json.get("ws_url",      "")
+			GameData.opponent_id       = json.get("opponent_id", 0)
+			GameData.is_host           = json.get("is_p1", false)
 
-			# is_p1 viene del servidor — fuente de verdad
-			GameData.is_host = json.get("is_p1", false)
-
+			await get_tree().create_timer(1.0).timeout
 			get_tree().change_scene_to_file("res://scenes/character_select.tscn")
 
-
-# ── Volver ─────────────────────────────────────────────────
 
 func _on_back():
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

@@ -1,7 +1,3 @@
-# ============================================================
-#   RipJaw — game_data.gd
-#   AutoLoad global entre escenas
-# ============================================================
 extends Node
 
 # ── Partida ────────────────────────────────────────────────
@@ -14,12 +10,17 @@ var p2_stats: FighterStats = null
 var p1_scene: String = "res://scenes/player_deku.tscn"
 var p2_scene: String = "res://scenes/player_deku.tscn"
 
-# ── Online ─────────────────────────────────────────────────
-var is_online:   bool   = false
-var is_host:     bool   = false   # true = soy P1 en el room
-var room_id:     String = ""
-var ws_url:      String = ""
-var opponent_id: int    = 0
+# ── Sesión ─────────────────────────────────────────────────
+var is_guest:    bool   = false
+var guest_id:    String = ""
+var p1_username: String = "P1"
+var p2_username: String = "P2"
 
-# ── Personaje del oponente (recibido por WS) ───────────────
-var opponent_char_index: int = 0
+# ── Online ─────────────────────────────────────────────────
+var is_online:            bool   = false
+var is_host:              bool   = false
+var room_id:              String = ""
+var ws_url:               String = ""
+var opponent_id:          int    = 0
+var opponent_char_index:  int    = 0
+var opponent_username:    String = "Oponente"

@@ -3,7 +3,7 @@
 # ============================================================
 extends Node
 
-const BASE_URL = "https://ripjaw-production-2299.up.railway.app"
+const BASE_URL = "https://ripjaw.onrender.com"
 
 var token:            String = ""
 var local_player_id:  int    = 0

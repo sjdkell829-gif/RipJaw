@@ -1,11 +1,10 @@
-# ============================================================
-#   RipJaw — ai_fighter.gd
-# ============================================================
 extends CharacterBody2D
 
 @export var stats: FighterStats
 @export var player_id: int = 2
 @export var is_local_player: bool = false
+
+var slot: int = 2
 
 var damage_percent: float = 0.0
 var stocks: int = 3
@@ -35,7 +34,7 @@ var _retreat_timer: float = 0.0
 
 func _ready():
 	difficulty = clamp(difficulty, 0, 2)
-	_apply_stats_from_gamedata()
+	_apply_stats_from_slot()
 	if stats == null:
 		push_error("AI Fighter no tiene FighterStats asignado")
 		return
@@ -49,10 +48,11 @@ func _ready():
 		sprite.play("idle")
 
 
-func setup(pid: int, local: bool):
+func setup(pid: int, local: bool, p_slot: int = 2):
 	player_id       = pid
 	is_local_player = local
-	_apply_stats_from_gamedata()
+	slot            = p_slot
+	_apply_stats_from_slot()
 	_setup_actions()
 	if stats:
 		_facing = 1.0 if stats.faces_right else -1.0
@@ -62,15 +62,15 @@ func setup(pid: int, local: bool):
 		sprite.play("idle")
 
 
-func _apply_stats_from_gamedata():
-	if player_id == 1 and GameData.p1_stats != null:
+func _apply_stats_from_slot():
+	if slot == 1 and GameData.p1_stats != null:
 		stats = GameData.p1_stats
-	elif player_id == 2 and GameData.p2_stats != null:
+	elif slot == 2 and GameData.p2_stats != null:
 		stats = GameData.p2_stats
 
 
 func _setup_actions():
-	if player_id == 1:
+	if slot == 1:
 		_actions = {"left": "p1_left", "right": "p1_right", "jump": "p1_jump", "attack": "p1_attack", "down": "p1_down", "special": "p1_special"}
 	else:
 		_actions = {"left": "p2_left", "right": "p2_right", "jump": "p2_jump", "attack": "p2_attack", "down": "p2_down", "special": "p2_special"}
@@ -79,26 +79,29 @@ func _setup_actions():
 func _physics_process(delta):
 	if stats == null:
 		return
+
 	if not is_on_floor():
 		velocity.y += gravity * stats.weight * delta
 
-	_think_timer -= delta
-	_jump_cooldown -= delta
-	_retreat_timer -= delta
+	if is_local_player:
+		_think_timer   -= delta
+		_jump_cooldown -= delta
+		_retreat_timer -= delta
 
-	if _think_timer <= 0:
-		_think_timer = _think_interval
-		_ai_think()
+		if _think_timer <= 0:
+			_think_timer = _think_interval
+			_ai_think()
 
-	_push_away_from_others(delta)
+		_push_away_from_others(delta)
 
 	move_and_slide()
 
-	if not _was_on_floor and is_on_floor():
-		_play_sfx(stats.sfx_land)
-	_was_on_floor = is_on_floor()
+	if is_local_player:
+		if not _was_on_floor and is_on_floor():
+			_play_sfx(stats.sfx_land)
+		_was_on_floor = is_on_floor()
+		_update_animation()
 
-	_update_animation()
 	_check_out_of_bounds()
 
 
@@ -109,27 +112,23 @@ func _push_away_from_others(delta: float):
 			continue
 		if not is_instance_valid(other) or not other.visible:
 			continue
-
 		var diff   = global_position - other.global_position
 		var dist_x = abs(diff.x)
 		var dist_y = diff.y
-
 		if dist_x > 80 and abs(dist_y) > 80:
 			continue
-
 		if dist_y < 0 and dist_y > -100 and dist_x < 60:
 			var slide_dir = sign(diff.x)
 			if slide_dir == 0:
-				slide_dir = 1.0 if player_id == 1 else -1.0
+				slide_dir = 1.0 if slot == 1 else -1.0
 			global_position.x += slide_dir * 120.0 * delta
 			velocity.x = slide_dir * stats.move_speed * 1.5
 			if is_on_floor():
 				velocity.y = stats.jump_force * 0.4
-
 		elif abs(diff.y) < 40 and dist_x < 60:
 			var push_dir = sign(diff.x)
 			if push_dir == 0:
-				push_dir = 1.0 if player_id == 1 else -1.0
+				push_dir = 1.0 if slot == 1 else -1.0
 			global_position.x += push_dir * 80.0 * delta
 			velocity.x += push_dir * 250.0 * delta
 
@@ -278,7 +277,52 @@ func take_hit(damage: int, source_pos: Vector2):
 
 
 func apply_remote_state(data: Dictionary):
-	pass
+	match data.get("type", ""):
+		"input":
+			var px = float(data.get("px", -1.0))
+			if px != -1.0:
+				global_position.x = lerp(global_position.x, px, 0.4)
+			velocity.x = float(data.get("vx", 0.0))
+			var remote_vy = float(data.get("vy", 0.0))
+			if not is_on_floor() or remote_vy < -100.0:
+				velocity.y = remote_vy
+			var input_x = float(data.get("x", 0.0))
+			if input_x != 0:
+				var new_facing: float = 1.0 if input_x > 0 else -1.0
+				if stats and not stats.faces_right:
+					new_facing = -new_facing
+				if new_facing != _facing:
+					_facing = new_facing
+					sprite.scale.x = _facing
+			if _current_anim == "attack" and sprite.is_playing():
+				return
+			var vx = float(data.get("vx", 0.0))
+			var new_anim: String
+			if not is_on_floor():
+				new_anim = "jump"
+			elif abs(vx) > 50:
+				new_anim = "run"
+			else:
+				new_anim = "idle"
+			if new_anim != _current_anim:
+				_current_anim = new_anim
+				sprite.play(new_anim)
+		"attack":
+			if _current_anim != "attack":
+				_current_anim = "attack"
+				if sprite.sprite_frames and sprite.sprite_frames.has_animation("attack"):
+					sprite.play("attack")
+					await sprite.animation_finished
+				_current_anim = ""
+		"special":
+			if _current_anim != "special":
+				_current_anim = "special"
+				if sprite.sprite_frames and sprite.sprite_frames.has_animation("special"):
+					sprite.play("special")
+					await sprite.animation_finished
+				_current_anim = ""
+		"player_hit":
+			pass
 
 
 func _check_out_of_bounds():
@@ -289,7 +333,6 @@ func _check_out_of_bounds():
 func _die():
 	stocks -= 1
 	died.emit(player_id)
-
 	if stocks > 0:
 		hide()
 		process_mode = Node.PROCESS_MODE_DISABLED

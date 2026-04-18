@@ -4,10 +4,6 @@ use warnings;
 use Mojolicious::Lite -signatures;
 use Mojo::JSON qw(decode_json encode_json);
 
-# ============================================================
-#   SmashAPI — Backend Principal (Perl + Mojolicious)
-# ============================================================
-
 my $SECRET = $ENV{JWT_SECRET} // 'smashapi_secret_cambiar_en_produccion';
 app->config(
     hypnotoad => {
@@ -16,7 +12,6 @@ app->config(
     }
 );
 
-# Middleware: CORS
 hook before_dispatch => sub ($c) {
     $c->res->headers->header('Access-Control-Allow-Origin'  => '*');
     $c->res->headers->header('Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS');
@@ -26,9 +21,6 @@ hook before_dispatch => sub ($c) {
     $c->reply->rendered(200);
 };
 
-# ============================================================
-#   Inicializar DB
-# ============================================================
 use DBI;
 my $dbh;
 
@@ -85,9 +77,6 @@ sub _init_db {
     });
 }
 
-# ============================================================
-#   Helpers: JWT simple
-# ============================================================
 use MIME::Base64 qw(encode_base64url decode_base64url);
 use Digest::SHA qw(hmac_sha256);
 
@@ -121,7 +110,7 @@ helper auth_required => sub ($c) {
 };
 
 # ============================================================
-#   RUTAS: Autenticación
+#   Auth
 # ============================================================
 
 post '/api/auth/register' => sub ($c) {
@@ -135,7 +124,6 @@ post '/api/auth/register' => sub ($c) {
     }
 
     my $db = get_db();
-
     my $exists = $db->selectrow_hashref(
         "SELECT id FROM players WHERE username = ? OR email = ?",
         undef, $username, $email
@@ -146,13 +134,11 @@ post '/api/auth/register' => sub ($c) {
 
     use Digest::SHA qw(sha256_hex);
     my $pass_hash = sha256_hex($password . $SECRET);
-
     $db->do(
         "INSERT INTO players (username, email, password_hash, created_at) VALUES (?, ?, ?, datetime('now'))",
         undef, $username, $email, $pass_hash
     );
     my $player_id = $db->last_insert_id('', '', 'players', 'id');
-
     my $token = create_token({ player_id => $player_id, username => $username });
 
     $c->render(json => {
@@ -170,9 +156,8 @@ post '/api/auth/login' => sub ($c) {
 
     use Digest::SHA qw(sha256_hex);
     my $pass_hash = sha256_hex($password . $SECRET);
-
-    my $db     = get_db();
-    my $player = $db->selectrow_hashref(
+    my $db        = get_db();
+    my $player    = $db->selectrow_hashref(
         "SELECT id, username, email, elo FROM players WHERE username = ? AND password_hash = ?",
         undef, $username, $pass_hash
     );
@@ -182,7 +167,6 @@ post '/api/auth/login' => sub ($c) {
     }
 
     my $token = create_token({ player_id => $player->{id}, username => $player->{username} });
-
     $c->render(json => {
         token     => $token,
         player_id => $player->{id},
@@ -194,22 +178,20 @@ post '/api/auth/login' => sub ($c) {
 get '/api/auth/me' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
-
     my $db     = get_db();
     my $player = $db->selectrow_hashref(
         "SELECT id, username, email, elo, wins, losses, created_at FROM players WHERE id = ?",
         undef, $auth->{player_id}
     );
-
     $c->render(json => $player);
 };
 
 # ============================================================
-#   RUTAS: Jugadores
+#   Jugadores
 # ============================================================
 
 get '/api/players/ranking' => sub ($c) {
-    my $db = get_db();
+    my $db      = get_db();
     my $players = $db->selectall_arrayref(
         "SELECT id, username, elo, wins, losses FROM players ORDER BY elo DESC LIMIT 100",
         { Slice => {} }
@@ -228,10 +210,12 @@ get '/api/players/:id' => sub ($c) {
 };
 
 # ============================================================
-#   RUTAS: Matchmaking
+#   Matchmaking
 # ============================================================
-my $SERVER_URL = $ENV{RAILWAY_PUBLIC_DOMAIN}
-    ? "wss://$ENV{RAILWAY_PUBLIC_DOMAIN}"
+
+# ← AQUÍ ESTÁ EL CAMBIO — PUBLIC_DOMAIN en lugar de RAILWAY_PUBLIC_DOMAIN
+my $SERVER_URL = $ENV{PUBLIC_DOMAIN}
+    ? "wss://$ENV{PUBLIC_DOMAIN}"
     : "ws://localhost:3000";
 
 post '/api/matchmaking/queue' => sub ($c) {
@@ -241,12 +225,10 @@ post '/api/matchmaking/queue' => sub ($c) {
     my $player_id = $auth->{player_id};
     my $db        = get_db();
 
-    # ── Limpiar rooms y queue con más de 5 minutos ─────────
     my $cutoff = time() - 300;
     $db->do("DELETE FROM rooms WHERE created_at < ?", undef, $cutoff);
     $db->do("DELETE FROM queue WHERE joined_at  < ?", undef, $cutoff);
 
-    # ── ¿Ya tiene room activo (creado hace menos de 5 min)? ─
     my $room = $db->selectrow_hashref(
         "SELECT room_id, p1_id, p2_id FROM rooms
          WHERE (p1_id = ? OR p2_id = ?)
@@ -257,17 +239,20 @@ post '/api/matchmaking/queue' => sub ($c) {
         my $opponent_id = $room->{p1_id} == $player_id
             ? $room->{p2_id}
             : $room->{p1_id};
-        my $is_p1 = $room->{p1_id} == $player_id ? \1 : \0;
+        my $opp = $db->selectrow_hashref(
+            "SELECT username FROM players WHERE id = ?",
+            undef, $opponent_id
+        );
         return $c->render(json => {
-            status      => 'match_found',
-            room_id     => $room->{room_id},
-            opponent_id => $opponent_id,
-            is_p1       => $is_p1,
-            ws_url      => "$SERVER_URL/game/$room->{room_id}",
+            status            => 'match_found',
+            room_id           => $room->{room_id},
+            opponent_id       => $opponent_id,
+            opponent_username => $opp ? $opp->{username} : 'Oponente',
+            is_p1             => $room->{p1_id} == $player_id ? \1 : \0,
+            ws_url            => "$SERVER_URL/game/$room->{room_id}",
         });
     }
 
-    # ── ¿Hay alguien esperando? ────────────────────────────
     my $opponent = $db->selectrow_hashref(
         "SELECT player_id, username FROM queue
          WHERE player_id != ?
@@ -276,14 +261,14 @@ post '/api/matchmaking/queue' => sub ($c) {
     );
 
     if ($opponent) {
-        my $opponent_id = $opponent->{player_id};
-        my $p1_id       = $opponent_id;
-        my $p2_id       = $player_id;
-        my $room_id     = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
+        my $opponent_id       = $opponent->{player_id};
+        my $opponent_username = $opponent->{username};
+        my $p1_id             = $opponent_id;
+        my $p2_id             = $player_id;
+        my $room_id           = sprintf("%d_%d_%d", $p1_id, $p2_id, time());
 
         $db->do(
-            "INSERT INTO rooms (room_id, p1_id, p2_id, created_at)
-             VALUES (?, ?, ?, ?)",
+            "INSERT INTO rooms (room_id, p1_id, p2_id, created_at) VALUES (?, ?, ?, ?)",
             undef, $room_id, $p1_id, $p2_id, time()
         );
         $db->do(
@@ -292,18 +277,17 @@ post '/api/matchmaking/queue' => sub ($c) {
         );
 
         return $c->render(json => {
-            status      => 'match_found',
-            room_id     => $room_id,
-            opponent_id => $opponent_id,
-            is_p1       => \0,          # este jugador es P2
-            ws_url      => "$SERVER_URL/game/$room_id",
+            status            => 'match_found',
+            room_id           => $room_id,
+            opponent_id       => $opponent_id,
+            opponent_username => $opponent_username,
+            is_p1             => \0,
+            ws_url            => "$SERVER_URL/game/$room_id",
         });
     }
 
-    # ── Nadie esperando — entrar a la cola ─────────────────
     $db->do(
-        "INSERT OR REPLACE INTO queue (player_id, username, joined_at)
-         VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO queue (player_id, username, joined_at) VALUES (?, ?, ?)",
         undef, $player_id, $auth->{username}, time()
     );
 
@@ -313,7 +297,6 @@ post '/api/matchmaking/queue' => sub ($c) {
     });
 };
 
-# DELETE /api/matchmaking/queue — Salir de la cola
 del '/api/matchmaking/queue' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
@@ -323,11 +306,11 @@ del '/api/matchmaking/queue' => sub ($c) {
 };
 
 # ============================================================
-#   RUTAS: Partidas
+#   Partidas
 # ============================================================
 
 post '/api/match/result' => sub ($c) {
-    my $auth   = $c->auth_required;
+    my $auth = $c->auth_required;
     return unless $auth;
 
     my $params    = $c->req->json;
@@ -340,14 +323,12 @@ post '/api/match/result' => sub ($c) {
         "INSERT INTO matches (room_id, winner_id, loser_id, played_at) VALUES (?, ?, ?, datetime('now'))",
         undef, $room_id, $winner_id, $loser_id
     );
-
     $db->do("UPDATE players SET wins = wins + 1, elo = elo + 25 WHERE id = ?", undef, $winner_id);
     $db->do("UPDATE players SET losses = losses + 1, elo = MAX(0, elo - 15) WHERE id = ?", undef, $loser_id);
 
     $c->render(json => { message => 'Resultado guardado', elo_change => { winner => '+25', loser => '-15' } });
 };
 
-# DELETE /api/match/room — Limpiar room al terminar partida
 del '/api/match/room' => sub ($c) {
     my $auth = $c->auth_required;
     return unless $auth;
@@ -374,7 +355,7 @@ get '/api/match/history/:player_id' => sub ($c) {
 };
 
 # ============================================================
-#   WebSocket — Sincronización en tiempo real
+#   WebSocket
 # ============================================================
 my %rooms;
 
@@ -395,7 +376,6 @@ websocket '/game/:room_id' => sub ($c) {
     $c->on(message => sub ($c, $msg) {
         my $data = eval { decode_json($msg) };
         return unless $data;
-
         for my $tx (@{$rooms{$room_id}}) {
             next if $tx == $c->tx;
             $tx->send({ json => $data });
@@ -409,20 +389,23 @@ websocket '/game/:room_id' => sub ($c) {
     });
 };
 
-# ── DEBUG: ver estado de cola y rooms ──────────────────────
+# ============================================================
+#   Debug
+# ============================================================
 get '/api/debug/state' => sub ($c) {
     my $db    = get_db();
     my $queue = $db->selectall_arrayref(
         "SELECT player_id, username, joined_at FROM queue",
         { Slice => {} }
     );
-    my $rooms = $db->selectall_arrayref(
+    my $rooms_db = $db->selectall_arrayref(
         "SELECT room_id, p1_id, p2_id, created_at FROM rooms",
         { Slice => {} }
     );
-    $c->render(json => { queue => $queue, rooms => $rooms });
+    $c->render(json => { queue => $queue, rooms => $rooms_db });
 };
+
 # ============================================================
-#   Iniciar servidor
+#   Iniciar
 # ============================================================
 app->start;

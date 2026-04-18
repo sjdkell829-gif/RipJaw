@@ -10,7 +10,6 @@
 script = ExtResource("1_nc7ol")
 move_speed = 200.0
 jump_force = -650.0
-weight = 1.2
 attack_damage = 18
 faces_right = false
 sfx_jump = ExtResource("5_42bh2")

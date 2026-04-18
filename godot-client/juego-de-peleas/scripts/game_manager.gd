@@ -29,27 +29,23 @@ func _ready():
 	_spawn_players()
 
 	if not GameData.is_online:
-		# ── Modo local / bot ────────────────────────────────
-		player1.setup(1, true)
+		player1.setup(1, true,  1)
 		if GameData.vs_bot:
-			player2.setup(2, false)
+			player2.setup(2, false, 2)
 		else:
-			player2.setup(2, true)
+			player2.setup(2, true,  2)
 		local_fighter  = player1
 		remote_fighter = player2
 		game_running   = true
 	else:
-		# ── Modo online ─────────────────────────────────────
-		# GameData.is_host = true  →  soy P1
-		# GameData.is_host = false →  soy P2
 		if GameData.is_host:
-			player1.setup(ApiClient.local_player_id, true)
-			player2.setup(GameData.opponent_id,      false)
+			player1.setup(ApiClient.local_player_id, true,  1)
+			player2.setup(GameData.opponent_id,      false, 2)
 			local_fighter  = player1
 			remote_fighter = player2
 		else:
-			player1.setup(GameData.opponent_id,      false)
-			player2.setup(ApiClient.local_player_id, true)
+			player1.setup(GameData.opponent_id,      false, 1)
+			player2.setup(ApiClient.local_player_id, true,  2)
 			local_fighter  = player2
 			remote_fighter = player1
 
@@ -62,17 +58,16 @@ func _ready():
 	player2.took_damage.connect(_on_damage_updated)
 	player2.died.connect(_on_player_died)
 
-	# WebSocket
 	if GameData.is_online:
 		var ws = get_node_or_null("/root/WebSocketClient")
 		if ws:
 			ws.game_started.connect(_on_game_started)
 			ws.game_state_received.connect(_on_game_state)
 			ws.game_over.connect(_on_game_over)
-			# Si el WS ya está conectado (desde character_select) no volver a conectar
 			if not ws.is_connected_to_room:
 				await ws.connect_to_room(GameData.ws_url, GameData.room_id)
 			game_running = true
+
 
 
 func _spawn_players():
@@ -106,13 +101,10 @@ func _process(delta):
 	if time_left <= 0:
 		_end_game()
 
-	# Enviar input local al oponente
 	if GameData.is_online:
 		var ws = get_node_or_null("/root/WebSocketClient")
 		if ws and ws.is_connected_to_room and local_fighter:
-			var actions = local_fighter._actions if local_fighter.has_method("_get_actions") \
-						  else { "left": "p1_left", "right": "p1_right",
-								 "attack": "p1_attack", "jump": "p1_jump" }
+			var actions = local_fighter._actions
 			var dir = Input.get_axis(
 				actions.get("left",  "p1_left"),
 				actions.get("right", "p1_right")
@@ -120,21 +112,24 @@ func _process(delta):
 			ws.send_input(
 				dir, 0.0,
 				Input.is_action_pressed(actions.get("attack", "p1_attack")),
-				Input.is_action_just_pressed(actions.get("jump", "p1_jump"))
+				Input.is_action_just_pressed(actions.get("jump", "p1_jump")),
+				local_fighter.global_position,
+				local_fighter.velocity
 			)
-
 
 func _on_game_started():
 	game_running = true
 
 
 func _on_game_state(data: Dictionary):
-	# Ignorar mensajes de selección de personaje
 	var t = data.get("type", "")
+	print("=== _on_game_state tipo: ", t)
 	if t == "char_cursor" or t == "char_ready":
 		return
 	if remote_fighter:
 		remote_fighter.apply_remote_state(data)
+	else:
+		print("=== remote_fighter es NULL")
 
 
 func _on_game_over(_winner: String):
