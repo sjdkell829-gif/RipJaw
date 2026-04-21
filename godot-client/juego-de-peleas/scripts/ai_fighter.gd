@@ -5,6 +5,13 @@ extends CharacterBody2D
 @export var is_local_player: bool = false
 
 var slot: int = 2
+var username: String = ""
+var _name_label: Label = null
+
+# Interpolación remota
+var _target_pos: Vector2 = Vector2.ZERO
+var _target_vel: Vector2 = Vector2.ZERO
+var _has_remote_target: bool = false
 
 var damage_percent: float = 0.0
 var stocks: int = 3
@@ -60,6 +67,27 @@ func setup(pid: int, local: bool, p_slot: int = 2):
 		sprite.scale.x = _facing
 	if sprite and stats:
 		sprite.play("idle")
+	if slot == 1:
+		username = GameData.p1_username
+	else:
+		username = GameData.opponent_username if GameData.is_online else GameData.p2_username
+	_setup_name_label()
+
+
+func _setup_name_label():
+	if _name_label:
+		_name_label.queue_free()
+	_name_label = Label.new()
+	_name_label.text = username
+	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_label.add_theme_font_size_override("font_size", 12)
+	_name_label.add_theme_color_override("font_color", Color.WHITE)
+	_name_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	_name_label.add_theme_constant_override("shadow_offset_x", 1)
+	_name_label.add_theme_constant_override("shadow_offset_y", 1)
+	_name_label.custom_minimum_size = Vector2(120, 20)
+	_name_label.position = Vector2(-60, -50)
+	add_child(_name_label)
 
 
 func _apply_stats_from_slot():
@@ -93,6 +121,13 @@ func _physics_process(delta):
 			_ai_think()
 
 		_push_away_from_others(delta)
+	else:
+		# Remoto: interpolar hacia posición objetivo
+		if _has_remote_target:
+			global_position = global_position.lerp(_target_pos, 12.0 * delta)
+			velocity.x = _target_vel.x
+			if _target_vel.y < -50.0:
+				velocity.y = _target_vel.y
 
 	move_and_slide()
 
@@ -280,12 +315,12 @@ func apply_remote_state(data: Dictionary):
 	match data.get("type", ""):
 		"input":
 			var px = float(data.get("px", -1.0))
+			var py = float(data.get("py", -1.0))
 			if px != -1.0:
-				global_position.x = lerp(global_position.x, px, 0.4)
-			velocity.x = float(data.get("vx", 0.0))
-			var remote_vy = float(data.get("vy", 0.0))
-			if not is_on_floor() or remote_vy < -100.0:
-				velocity.y = remote_vy
+				_target_pos = Vector2(px, py)
+				_target_vel = Vector2(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)))
+				_has_remote_target = true
+
 			var input_x = float(data.get("x", 0.0))
 			if input_x != 0:
 				var new_facing: float = 1.0 if input_x > 0 else -1.0
@@ -294,6 +329,7 @@ func apply_remote_state(data: Dictionary):
 				if new_facing != _facing:
 					_facing = new_facing
 					sprite.scale.x = _facing
+
 			if _current_anim == "attack" and sprite.is_playing():
 				return
 			var vx = float(data.get("vx", 0.0))
@@ -307,6 +343,7 @@ func apply_remote_state(data: Dictionary):
 			if new_anim != _current_anim:
 				_current_anim = new_anim
 				sprite.play(new_anim)
+
 		"attack":
 			if _current_anim != "attack":
 				_current_anim = "attack"
@@ -314,6 +351,7 @@ func apply_remote_state(data: Dictionary):
 					sprite.play("attack")
 					await sprite.animation_finished
 				_current_anim = ""
+
 		"special":
 			if _current_anim != "special":
 				_current_anim = "special"
@@ -321,6 +359,7 @@ func apply_remote_state(data: Dictionary):
 					sprite.play("special")
 					await sprite.animation_finished
 				_current_anim = ""
+
 		"player_hit":
 			pass
 
@@ -338,14 +377,16 @@ func _die():
 		process_mode = Node.PROCESS_MODE_DISABLED
 		_play_sfx(stats.sfx_death)
 		await get_tree().create_timer(1.5).timeout
-		position       = Vector2(900, 150)
-		velocity       = Vector2.ZERO
-		damage_percent = 0.0
-		can_attack     = true
-		_current_anim  = ""
-		_facing        = 1.0 if stats.faces_right else -1.0
-		scale.x        = 1.0
-		sprite.scale.x = _facing
+		position           = Vector2(900, 150)
+		velocity           = Vector2.ZERO
+		damage_percent     = 0.0
+		can_attack         = true
+		_current_anim      = ""
+		_facing            = 1.0 if stats.faces_right else -1.0
+		scale.x            = 1.0
+		sprite.scale.x     = _facing
+		_target_pos        = Vector2(900, 150)
+		_has_remote_target = false
 		_find_target()
 		took_damage.emit(player_id, 0.0)
 		show()

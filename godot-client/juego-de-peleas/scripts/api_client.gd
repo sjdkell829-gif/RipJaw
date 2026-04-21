@@ -19,7 +19,7 @@ signal result_saved()
 
 
 func _ready():
-	token = ProjectSettings.get_setting("user_token", "")
+	token = _load_token()
 	if token != "":
 		_restore_session()
 
@@ -32,13 +32,12 @@ func _restore_session():
 			var data        = _http_parse(body)
 			local_player_id = data.get("id", 0)
 			local_username  = data.get("username", "")
-			# ── Sincronizar con GameData ──
 			GameData.is_online = false
 			print("Sesión restaurada: ", local_username, " id:", local_player_id)
 		else:
 			token           = ""
 			local_player_id = 0
-			ProjectSettings.set_setting("user_token", "")
+			_save_token("")
 	)
 
 
@@ -96,8 +95,8 @@ func register(username: String, email: String, password: String):
 		var data = _http_parse(body)
 		if code == 201:
 			_save_token(data.get("token", ""))
-			local_player_id = data.get("player_id", 0)
-			local_username  = data.get("username", "")
+			local_player_id    = data.get("player_id", 0)
+			local_username     = data.get("username", "")
 			GameData.is_online = false
 			register_success.emit(data)
 		else:
@@ -115,8 +114,8 @@ func login(username: String, password: String):
 		var data = _http_parse(body)
 		if code == 200:
 			_save_token(data.get("token", ""))
-			local_player_id = data.get("player_id", 0)
-			local_username  = data.get("username", "")
+			local_player_id    = data.get("player_id", 0)
+			local_username     = data.get("username", "")
 			GameData.is_online = false
 			login_success.emit(data)
 		else:
@@ -174,9 +173,22 @@ func report_result(room_id: String, winner_id: int, loser_id: int):
 	)
 
 
-# ── Utilidades ─────────────────────────────────────────────
+# ── Token local ────────────────────────────────────────────
 
 func _save_token(t: String):
 	token = t
-	ProjectSettings.set_setting("user_token", t)
-	ProjectSettings.save()
+	var file = FileAccess.open("user://session.dat", FileAccess.WRITE)
+	if file:
+		file.store_string(t)
+		file.close()
+
+
+func _load_token() -> String:
+	if not FileAccess.file_exists("user://session.dat"):
+		return ""
+	var file = FileAccess.open("user://session.dat", FileAccess.READ)
+	if file:
+		var t = file.get_as_text().strip_edges()
+		file.close()
+		return t
+	return ""

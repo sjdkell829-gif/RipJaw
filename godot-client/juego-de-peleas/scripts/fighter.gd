@@ -8,6 +8,11 @@ var slot: int = 1
 var username: String = ""
 var _name_label: Label = null
 
+# Interpolación remota
+var _target_pos: Vector2 = Vector2.ZERO
+var _target_vel: Vector2 = Vector2.ZERO
+var _has_remote_target: bool = false
+
 var damage_percent: float = 0.0
 var stocks: int = 3
 var can_attack: bool = true
@@ -118,6 +123,13 @@ func _physics_process(delta):
 				can_special = true
 		_handle_input()
 		_push_away_from_others(delta)
+	else:
+		# Remoto: interpolar hacia posición objetivo
+		if _has_remote_target:
+			global_position = global_position.lerp(_target_pos, 12.0 * delta)
+			velocity.x = _target_vel.x
+			if _target_vel.y < -50.0:
+				velocity.y = _target_vel.y
 
 	move_and_slide()
 
@@ -292,12 +304,12 @@ func apply_remote_state(data: Dictionary):
 	match data.get("type", ""):
 		"input":
 			var px = float(data.get("px", -1.0))
+			var py = float(data.get("py", -1.0))
 			if px != -1.0:
-				global_position.x = lerp(global_position.x, px, 0.4)
-			velocity.x = float(data.get("vx", 0.0))
-			var remote_vy = float(data.get("vy", 0.0))
-			if not is_on_floor() or remote_vy < -100.0:
-				velocity.y = remote_vy
+				_target_pos = Vector2(px, py)
+				_target_vel = Vector2(float(data.get("vx", 0.0)), float(data.get("vy", 0.0)))
+				_has_remote_target = true
+
 			var input_x = float(data.get("x", 0.0))
 			if input_x != 0:
 				var new_facing: float = 1.0 if input_x > 0 else -1.0
@@ -306,6 +318,7 @@ func apply_remote_state(data: Dictionary):
 				if new_facing != _facing:
 					_facing = new_facing
 					sprite.scale.x = _facing
+
 			if (_current_anim == "attack" or _current_anim == "special") and sprite.is_playing():
 				return
 			var vx = float(data.get("vx", 0.0))
@@ -319,6 +332,7 @@ func apply_remote_state(data: Dictionary):
 			if new_anim != _current_anim:
 				_current_anim = new_anim
 				sprite.play(new_anim)
+
 		"attack":
 			if _current_anim != "attack":
 				_current_anim = "attack"
@@ -326,6 +340,7 @@ func apply_remote_state(data: Dictionary):
 					sprite.play("attack")
 					await sprite.animation_finished
 				_current_anim = ""
+
 		"special":
 			if _current_anim != "special":
 				_current_anim = "special"
@@ -333,6 +348,7 @@ func apply_remote_state(data: Dictionary):
 					sprite.play("special")
 					await sprite.animation_finished
 				_current_anim = ""
+
 		"player_hit":
 			pass
 
@@ -359,6 +375,8 @@ func _die():
 		_facing                 = 1.0 if stats.faces_right else -1.0
 		scale.x                 = 1.0
 		sprite.scale.x          = _facing
+		_target_pos             = Vector2(576, 150)
+		_has_remote_target      = false
 		took_damage.emit(player_id, 0.0)
 		show()
 		process_mode  = Node.PROCESS_MODE_INHERIT

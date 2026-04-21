@@ -56,7 +56,6 @@ func _build_login_panel():
 	title.add_theme_font_size_override("font_size", 36)
 	vbox.add_child(title)
 
-	# ── Jugar sin cuenta ───────────────────────────────────
 	var quick_btn = Button.new()
 	quick_btn.text = "🎮 Jugar sin cuenta"
 	quick_btn.custom_minimum_size = Vector2(400, 55)
@@ -172,9 +171,7 @@ func _load_elo():
 	)
 
 
-# ── Guest ──────────────────────────────────────────────────
 func _on_guest_play_pressed():
-	# Generar ID temporal si no tiene uno ya
 	if GameData.guest_id == "":
 		GameData.guest_id = "Guest_%d" % (randi() % 9000 + 1000)
 	GameData.is_guest    = true
@@ -184,7 +181,6 @@ func _on_guest_play_pressed():
 	elo_label.text     = "Modo invitado"
 
 
-# ── Local ──────────────────────────────────────────────────
 func _on_local_play_pressed():
 	GameData.is_online   = false
 	GameData.room_id     = ""
@@ -193,10 +189,8 @@ func _on_local_play_pressed():
 	get_tree().change_scene_to_file("res://scenes/match_config.tscn")
 
 
-# ── Online ─────────────────────────────────────────────────
 func _on_fight_pressed():
 	if GameData.is_guest:
-		# Guest puede jugar online con ID temporal
 		GameData.p1_username = GameData.guest_id
 	else:
 		GameData.p1_username = ApiClient.local_username
@@ -238,8 +232,11 @@ func _on_logout_pressed():
 	GameData.is_guest         = false
 	GameData.guest_id         = ""
 	GameData.p1_username      = ""
-	ProjectSettings.set_setting("user_token", "")
-	ProjectSettings.save()
+	# Borrar token guardado localmente
+	if FileAccess.file_exists("user://session.dat"):
+		DirAccess.remove_absolute(
+			ProjectSettings.globalize_path("user://session.dat")
+		)
 	_show_panel(login_panel)
 
 

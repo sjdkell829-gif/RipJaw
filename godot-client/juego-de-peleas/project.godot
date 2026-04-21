@@ -8,7 +8,7 @@
 
 config_version=5
 
-user_token=""
+user_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwbGF5ZXJfaWQiOjEsInVzZXJuYW1lIjoiZGVpZGFkIn0.6a9oCDa8VX0dNKp9_kG_sRhAUyJYcQMcBzOP_PHlX5k"
 
 [application]
 
